@@ -1,0 +1,79 @@
+{
+  "name": "My Orders (paid for user)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "my-orders",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-my-orders",
+      "name": "My Orders Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "my-orders"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst query = item.query || item.params || {};\nconst user_id = parseInt(query.user_id || query.userId || '0', 10) || 0;\nreturn [{ json: { user_id } }];"
+      },
+      "id": "normalize-query",
+      "name": "Normalize Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT o.id, o.order_number, o.user_id, o.status, o.payment_status, o.payment_intent_id, o.total_amount, o.paid_at, o.created_at, o.updated_at, o.completed_at, o.room_number, o.procedure_name, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.user_id = $1 AND o.payment_status = 'paid' ORDER BY o.created_at DESC LIMIT 50",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.user_id] }}"
+        }
+      },
+      "id": "get-my-orders",
+      "name": "Get My Orders",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [550, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Railway"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"orders\": $('Get My Orders').all().length ? $('Get My Orders').all().map(i => i.json) : [] } }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "My Orders Webhook": {
+      "main": [[{ "node": "Normalize Query", "type": "main", "index": 0 }]]
+    },
+    "Normalize Query": {
+      "main": [[{ "node": "Get My Orders", "type": "main", "index": 0 }]]
+    },
+    "Get My Orders": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-07T00:00:00.000Z",
+  "versionId": "1"
+}

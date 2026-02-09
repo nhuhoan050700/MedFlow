@@ -1,12 +1,13 @@
 /**
  * Run a migration file against DATABASE_URL (no psql required).
  * Usage: node run-migration.js [migration-file]
- * Example: node run-migration.js migrations/003_generate_queue_number_arr.sql
- * With Railway: railway run npm run migrate
+ * Example: node run-migration.js migrations/006_add_paid_at.sql
+ * DATABASE_URL: set in env, or in database/.env (use public Railway URL when running locally).
  */
 
-const fs = require('fs');
 const path = require('path');
+try { require('dotenv').config({ path: path.join(__dirname, '.env') }); } catch (_) {}
+const fs = require('fs');
 const { Client } = require('pg');
 
 const migrationFile = process.argv[2] || 'migrations/003_generate_queue_number_arr.sql';
@@ -29,6 +30,7 @@ async function run() {
   const client = new Client({ connectionString: dbUrl });
   try {
     await client.connect();
+    await client.query("SET timezone = 'Asia/Ho_Chi_Minh'");
     await client.query(sql);
     console.log('Migration ran successfully:', migrationFile);
   } catch (err) {

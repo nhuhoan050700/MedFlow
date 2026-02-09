@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { formatVnd } from '@/lib/format'
 
 interface Order {
   id: number
   order_number: string
-  queue_number: string
   room_number: string
   status: string
   payment_status: string
@@ -18,29 +18,37 @@ interface Order {
 export default function OrderList() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('all')
+  const [filter, setFilter] = useState<string>('paid')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 5000) // Refresh every 5 seconds
-    return () => clearInterval(interval)
   }, [filter])
 
   const fetchOrders = async () => {
     try {
-      const n8nUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || ''
-      const url = filter === 'all' 
-        ? `${n8nUrl}/worker-orders`
-        : `${n8nUrl}/worker-orders?status=${filter}`
-      
+      setError(null)
+      const url = filter === 'all'
+        ? '/api/worker-orders'
+        : `/api/worker-orders?status=${encodeURIComponent(filter)}`
+
       const response = await fetch(url)
       const data = await response.json()
-      
-      if (data.success) {
-        setOrders(data.orders)
+
+      if (!response.ok) {
+        setError(data?.error || 'Failed to load orders')
+        setOrders([])
+        return
       }
-    } catch (error) {
-      console.error('Error fetching orders:', error)
+      if (data.success) {
+        setOrders(Array.isArray(data.orders) ? data.orders : [])
+      } else {
+        setOrders([])
+      }
+    } catch (err) {
+      console.error('Error fetching orders:', err)
+      setError('Cannot reach server. Is the worker dashboard and n8n running?')
+      setOrders([])
     } finally {
       setLoading(false)
     }
@@ -48,8 +56,7 @@ export default function OrderList() {
 
   const updateOrderStatus = async (orderId: number, newStatus: string) => {
     try {
-      const n8nUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || ''
-      const response = await fetch(`${n8nUrl}/update-status`, {
+      const response = await fetch('/api/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -86,11 +93,20 @@ export default function OrderList() {
     }
   }
 
-  if (loading) {
+  if (loading && !error) {
     return (
       <div className="bg-white rounded-lg shadow-lg p-8 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
         <p className="mt-4 text-gray-600">Loading orders...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+        <p className="text-red-600 font-medium">{error}</p>
+        <p className="mt-2 text-sm text-gray-500">Set N8N_WEBHOOK_URL or NEXT_PUBLIC_N8N_WEBHOOK_URL in .env.local (e.g. http://localhost:5678/webhook). Only paid orders are listed.</p>
       </div>
     )
   }
@@ -118,6 +134,12 @@ export default function OrderList() {
           >
             In Progress
           </button>
+          <button
+            onClick={() => setFilter('completed')}
+            className={`px-4 py-2 rounded-lg ${filter === 'completed' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+          >
+            Done
+          </button>
         </div>
       </div>
 
@@ -126,10 +148,9 @@ export default function OrderList() {
           <thead>
             <tr className="border-b">
               <th className="text-left p-3">Order #</th>
-              <th className="text-left p-3">Patient</th>
+              <th className="text-left p-3">Customer</th>
               <th className="text-left p-3">Procedure</th>
               <th className="text-left p-3">Room</th>
-              <th className="text-left p-3">Queue</th>
               <th className="text-left p-3">Status</th>
               <th className="text-left p-3">Amount</th>
               <th className="text-left p-3">Actions</th>
@@ -138,7 +159,7 @@ export default function OrderList() {
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center p-8 text-gray-500">
+                <td colSpan={7} className="text-center p-8 text-gray-500">
                   No orders found
                 </td>
               </tr>
@@ -147,15 +168,10 @@ export default function OrderList() {
                 <tr key={order.id} className="border-b hover:bg-gray-50">
                   <td className="p-3 font-semibold">{order.order_number}</td>
                   <td className="p-3">{order.user_name}</td>
-                  <td className="p-3">{order.procedure_name}</td>
+                  <td className="p-3">{order.procedure_name ?? '—'}</td>
                   <td className="p-3">
                     <span className="font-semibold text-green-600">
-                      {order.room_number}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span className="font-semibold text-blue-600">
-                      {order.queue_number}
+                      {order.room_number ?? '—'}
                     </span>
                   </td>
                   <td className="p-3">
@@ -163,24 +179,24 @@ export default function OrderList() {
                       {order.status.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td className="p-3">${order.total_amount.toFixed(2)}</td>
+                  <td className="p-3">{formatVnd(Number(order.total_amount))}</td>
                   <td className="p-3">
                     <div className="flex gap-2">
-                      {order.status === 'paid' && (
-                        <button
-                          onClick={() => updateOrderStatus(order.id, 'in_progress')}
-                          className="bg-orange-600 hover:bg-orange-700 text-white text-sm px-3 py-1 rounded"
-                        >
-                          Start Test
-                        </button>
-                      )}
-                      {order.status === 'in_progress' && (
-                        <button
-                          onClick={() => updateOrderStatus(order.id, 'completed')}
-                          className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded"
-                        >
-                          Mark Completed
-                        </button>
+                      {(order.status === 'paid' || order.status === 'in_progress') && (
+                        <>
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'in_progress')}
+                            className={`text-sm px-3 py-1 rounded ${order.status === 'in_progress' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                          >
+                            Not done
+                          </button>
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'completed')}
+                            className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded"
+                          >
+                            Done
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>

@@ -19,7 +19,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT status FROM orders WHERE id = $1",
-        "additionalFields": {}
+        "additionalFields": {
+          "queryParameters": "={{ [$json.body?.order_id] }}"
+        }
       },
       "id": "get-current-status",
       "name": "Get Current Status",
@@ -37,7 +39,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP, completed_at = CASE WHEN $1 = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END WHERE id = $2 RETURNING *",
-        "additionalFields": {}
+        "additionalFields": {
+          "queryParameters": "={{ [$('Status Update Webhook').first().json.body?.status, $('Status Update Webhook').first().json.body?.order_id] }}"
+        }
       },
       "id": "update-order-status",
       "name": "Update Order Status",
@@ -55,7 +59,9 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO order_updates (order_id, worker_id, old_status, new_status, notes) VALUES ($1, $2, $3, $4, $5)",
-        "additionalFields": {}
+        "additionalFields": {
+          "queryParameters": "={{ [$('Status Update Webhook').first().json.body?.order_id, $('Status Update Webhook').first().json.body?.worker_id || 1, $('Get Current Status').first().json?.status, $('Status Update Webhook').first().json.body?.status, ''] }}"
+        }
       },
       "id": "log-update",
       "name": "Log Status Update",

@@ -12,28 +12,31 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const orderNumber = body.order_number as string;
-    const amountUsd = Number(body.amount);
+    const amountFromClient = Number(body.amount);
     const currency = (body.currency as string) || process.env.SEPAY_CURRENCY || 'VND';
     const description = (body.description as string) || undefined;
     const orderIds = body.order_ids as number[] | undefined;
 
-    if (!orderNumber || !amountUsd || amountUsd <= 0) {
+    if (!orderNumber || amountFromClient == null || amountFromClient <= 0) {
       return NextResponse.json(
         { success: false, error: 'order_number and amount are required' },
         { status: 400 }
       );
     }
 
-    // Convert to VND if currency is VND (default for Vietnam)
+    // When currency is VND, amount from frontend is already in VND. When USD, convert to VND using rate.
     const rate = Number(process.env.SEPAY_USD_TO_VND_RATE || 25000);
     const amount =
-      currency === 'VND' ? Math.round(amountUsd * rate) : Math.round(amountUsd * 100) / 100;
+      currency === 'VND'
+        ? Math.round(amountFromClient)
+        : Math.round(amountFromClient * rate);
 
+    // Use NEXT_PUBLIC_APP_URL in production so your link stays the same (payment redirects, SePay callbacks).
+    // Set it in your host's env (e.g. Vercel: NEXT_PUBLIC_APP_URL=https://yourdomain.com).
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:7030';
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+      'http://localhost:7030';
 
     const checkout = initCheckout({
       orderInvoiceNumber: orderNumber,

@@ -19,9 +19,9 @@
       "parameters": {
         "fromEmail": "noreply@hospital.com",
         "toEmail": "={{ $json.body.email }}",
-        "subject": "Order Confirmation - {{ $json.body.orderNumber }}",
+        "subject": "Xác nhận thanh toán – Order {{ $json.body.orderNumber }}",
         "emailType": "html",
-        "message": "=<h1>Order Confirmation</h1><p>Dear {{ $json.body.userName }},</p><p>Your order has been confirmed!</p><h2>Order Details:</h2><ul><li><strong>Order Number:</strong> {{ $json.body.orderNumber }}</li><li><strong>Procedure:</strong> {{ $json.body.procedureName }}</li><li><strong>Room:</strong> {{ $json.body.roomNumber }}</li><li><strong>Queue Number:</strong> {{ $json.body.queueNumber }}</li><li><strong>Amount:</strong> ${{ $json.body.totalAmount }}</li></ul><p><strong>Instructions:</strong></p><p>Please proceed to {{ $json.body.roomNumber }}. Your queue number is {{ $json.body.queueNumber }}. You will be called when it's your turn.</p><p>Thank you for choosing our services!</p>",
+        "message": "=<h1>Xác nhận thanh toán</h1><p>Kính gửi {{ $json.body.userName }},</p><p>Cảm ơn bạn đã thanh toán. Đơn hàng của bạn đã được xác nhận.</p><h2>Thông tin đơn hàng</h2><ul><li><strong>Mã đơn:</strong> {{ $json.body.orderNumber }}</li><li><strong>Dịch vụ:</strong> {{ $json.body.procedureName }}</li><li><strong>Phòng:</strong> {{ $json.body.roomNumber }}</li><li><strong>Số tiền:</strong> {{ $json.body.totalAmount }}</li><li><strong>Thời gian thanh toán:</strong> {{ $json.body.paidAt }}</li></ul><p><strong>Hướng dẫn:</strong> Vui lòng đến phòng {{ $json.body.roomNumber }} khi đến lượt bạn.</p><p>Cảm ơn bạn đã sử dụng dịch vụ!</p>",
         "options": {}
       },
       "id": "send-email",
@@ -39,9 +39,15 @@
   ],
   "connections": {
     "Email Webhook": {
-      "main": [[
-        { "node": "Send Email", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
@@ -51,6 +57,6 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2026-01-26T00:00:00.000Z",
+  "updatedAt": "2026-02-14T00:00:00.000Z",
   "versionId": "1"
 }

@@ -5,6 +5,7 @@ import { useGoogleLogin } from '@react-oauth/google'
 import type { Procedure } from '@/components/ProcedureSelection'
 import CheckIn from '@/components/CheckIn'
 import ProcedureSelection from '@/components/ProcedureSelection'
+import CartView from '@/components/CartView'
 import Payment from '@/components/Payment'
 import OrderStatus from '@/components/OrderStatus'
 import ProfileModal from '@/components/ProfileModal'
@@ -21,18 +22,22 @@ type User = {
 type Order = {
   id: number
   order_number: string
-  queue_number: string
   room_number: string
   status: string
   total_amount: number
   procedure_name?: string
+  user_name?: string
+  payment_status?: string
+  payment_intent_id?: string
+  created_at?: string
+  paid_at?: string
 }
 
 async function completeCheckIn(
   accessToken: string,
   setUser: (u: User) => void,
   setSessionToken: (t: string | null) => void,
-  setStep: (s: 'checkin' | 'procedure' | 'payment' | 'status') => void
+  setStep: (s: 'checkin' | 'order' | 'visit' | 'process' | 'payment') => void
 ) {
   const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` }
@@ -54,32 +59,54 @@ async function completeCheckIn(
   })
   const checkInData = await checkInResponse.json().catch(() => null)
 
-  const u = checkInData?.user
-  if (checkInData?.success && u && typeof u.id === 'number') {
-    setUser({ id: u.id, email: u.email || '', name: u.name || '', birthday: u.birthday ?? undefined, phone: u.phone, address: u.address ?? undefined })
+  // n8n may return user at different paths (flat top-level, nested, or direct)
+  const u =
+    (checkInData && typeof checkInData === 'object' && !Array.isArray(checkInData) && checkInData.id != null && checkInData.email ? checkInData : null) ??
+    checkInData?.user ??
+    checkInData?.data?.user ??
+    (checkInData?.data && typeof checkInData.data === 'object' && 'id' in checkInData.data ? checkInData.data : null) ??
+    checkInData?.body?.user
+  const userId = u?.id != null ? Number(u.id) : NaN
+  const hasValidUser = checkInResponse.ok && !!u && !isNaN(userId) && userId > 0
+
+  if (!hasValidUser) {
+    console.error('[check-in] Invalid response:', {
+      status: checkInResponse.status,
+      success: checkInData?.success,
+      hasUser: !!u,
+      userId,
+      raw: checkInData,
+      keys: checkInData ? Object.keys(checkInData) : [],
+    })
+  }
+
+  if (hasValidUser) {
+    setUser({ id: userId, email: u.email || '', name: u.name || '', birthday: u.birthday ?? undefined, phone: u.phone, address: u.address ?? undefined })
     setSessionToken(checkInData.sessionToken ?? null)
     if (typeof window !== 'undefined') {
       try {
-        const saved = { id: u.id, email: u.email || '', name: u.name || '', birthday: u.birthday ?? undefined, phone: u.phone, address: u.address ?? undefined }
+        const saved = { id: userId, email: u.email || '', name: u.name || '', birthday: u.birthday ?? undefined, phone: u.phone, address: u.address ?? undefined }
         localStorage.setItem('checkin_user', JSON.stringify(saved))
         if (checkInData.sessionToken) localStorage.setItem('checkin_session', checkInData.sessionToken)
       } catch (_) {}
     }
-    setStep('procedure')
+    setStep('order')
   } else {
-    const msg =
-      !u || typeof u?.id !== 'number'
-        ? 'Check-in succeeded but user data was missing.'
-        : checkInData?.message || checkInData?.error || (!checkInResponse.ok ? `Check-in failed (${checkInResponse.status}).` : 'Check-in failed.')
+    const err = checkInData?.message ?? checkInData?.error
+    const backendError = typeof err === 'string' ? err : (err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '')
+    const msg = !hasValidUser
+      ? `Check-in failed: ${backendError || 'user data was missing'}. Open browser console (F12) for details.`
+      : (!checkInResponse.ok ? `Check-in failed (${checkInResponse.status}).` : 'Check-in failed.')
     alert(msg)
   }
 }
 
 const STEP_TITLES: Record<string, string> = {
   checkin: 'Check in',
-  procedure: 'Procedures',
+  order: 'Order',
+  visit: 'Pay',
+  process: 'Process',
   payment: 'Payment',
-  status: 'Your visit',
 }
 
 export default function Home() {
@@ -87,18 +114,28 @@ export default function Home() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [cart, setCart] = useState<Procedure[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
   const [checkoutProcedures, setCheckoutProcedures] = useState<Procedure[]>([])
-  const [step, setStep] = useState<'checkin' | 'procedure' | 'payment' | 'status'>('checkin')
+  const [step, setStep] = useState<'checkin' | 'order' | 'visit' | 'process' | 'payment'>('checkin')
   const [profileOpen, setProfileOpen] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
+      const params = new URLSearchParams(window.location.search)
+      const urlStep = params.get('step')
+      if (urlStep === 'process') setStep('process')
+
       const stored = localStorage.getItem('checkin_user')
       if (stored) {
         const u = JSON.parse(stored) as User
         setUser(u)
-        if (step === 'checkin') setStep('procedure')
+        if (step === 'checkin' && urlStep !== 'process') setStep('order')
+      }
+      const storedOrders = localStorage.getItem('checkin_orders')
+      if (storedOrders) {
+        const parsed = JSON.parse(storedOrders) as Order[]
+        if (Array.isArray(parsed) && parsed.length > 0) setOrders(parsed)
       }
     } catch (_) {}
   }, [])
@@ -146,6 +183,46 @@ export default function Home() {
     }
   }, [doCheckIn])
 
+  // Fetch user's paid orders from DB when on Process tab
+  useEffect(() => {
+    if (typeof window === 'undefined' || step !== 'process' || !user?.id) return
+    let cancelled = false
+    setOrdersLoading(true)
+    fetch(`/api/my-orders?user_id=${user.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data.success && Array.isArray(data.orders)) {
+          const mapped: Order[] = data.orders.map((o: Record<string, unknown>) => ({
+            id: Number(o.id),
+            order_number: String(o.order_number ?? ''),
+            room_number: String(o.room_number ?? ''),
+            status: String(o.status ?? 'pending'),
+            total_amount: Number(o.total_amount ?? 0),
+            procedure_name: o.procedure_name != null ? String(o.procedure_name) : undefined,
+            user_name: o.user_name != null ? String(o.user_name) : undefined,
+            payment_status: o.payment_status != null ? String(o.payment_status) : undefined,
+            payment_intent_id: o.payment_intent_id != null ? String(o.payment_intent_id) : undefined,
+            created_at: o.created_at != null ? String(o.created_at) : undefined,
+            paid_at: o.paid_at != null ? String(o.paid_at) : undefined,
+          }))
+          setOrders(mapped)
+          try {
+            localStorage.setItem('checkin_orders', JSON.stringify(mapped))
+          } catch (_) {}
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOrdersLoading(false)
+      })
+      .finally(() => {
+        if (!cancelled) setOrdersLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [step, user?.id])
+
   const handleAddToCart = (procedure: Procedure) => {
     setCart((prev) => (prev.some((p) => p.id === procedure.id) ? prev : [...prev, procedure]))
   }
@@ -183,45 +260,16 @@ export default function Home() {
     setStep('payment')
   }
 
-  const handlePaymentSuccess = () => setStep('status')
+  const handleGoToOrder = () => setStep('order')
 
-  useEffect(() => {
-    if (step !== 'status' || orders.length === 0) return
-    const interval = setInterval(async () => {
-      const n8nUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || ''
-      try {
-        const updates: Order[] = []
-        let changed = false
-        for (const o of orders) {
-          const response = await fetch(`${n8nUrl}/order-status?order_id=${o.id}`)
-          const text = await response.text()
-          const data = text ? (() => { try { return JSON.parse(text); } catch { return {}; } })() : {}
-          if (data.success && data.order) {
-            updates.push(data.order)
-            if (data.order.status !== o.status) {
-              changed = true
-              if (data.order.status === 'in_progress' || data.order.status === 'completed') {
-                const utterance = new SpeechSynthesisUtterance(
-                  data.order.status === 'in_progress'
-                    ? `Please proceed to ${data.order.room_number}. Queue number ${data.order.queue_number}.`
-                    : 'Your test has been completed. Thank you!'
-                )
-                window.speechSynthesis.speak(utterance)
-              }
-            }
-          } else {
-            updates.push(o)
-          }
-        }
-        if (changed) setOrders(updates)
-      } catch (e) {
-        console.error('Order status error:', e)
-      }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [step, orders])
+  const handlePaymentSuccess = () => {
+    try {
+      localStorage.setItem('checkin_orders', JSON.stringify(orders))
+    } catch (_) {}
+    setStep('process')
+  }
 
-  const showBottomBar = step === 'procedure' && cart.length > 0
+  const showBottomNav = user && step !== 'checkin' && step !== 'payment'
   const showAvatar = user && step !== 'checkin'
   const initial = user?.name?.trim().charAt(0)?.toUpperCase() || '?'
 
@@ -244,7 +292,7 @@ export default function Home() {
             type="button"
             onClick={() => setProfileOpen(true)}
             aria-label="Open profile"
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-semibold text-lg flex items-center justify-center touch-target active:bg-blue-200"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm flex items-center justify-center active:bg-blue-200"
           >
             {initial}
           </button>
@@ -261,10 +309,13 @@ export default function Home() {
             setUser(null)
             setSessionToken(null)
             setCart([])
+            setOrders([])
+            setCheckoutProcedures([])
             setProfileOpen(false)
             try {
               localStorage.removeItem('checkin_user')
               localStorage.removeItem('checkin_session')
+              localStorage.removeItem('checkin_orders')
             } catch (_) {}
             setStep('checkin')
           }}
@@ -272,7 +323,7 @@ export default function Home() {
       )}
 
       {/* Main content - scrollable area */}
-      <main className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${showBottomBar ? 'pb-24' : 'pb-6'}`}>
+      <main className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden ${showBottomNav ? 'pb-20' : 'pb-6'}`}>
         <div className="px-4 py-4">
           {step === 'checkin' && (
             <CheckIn
@@ -283,7 +334,7 @@ export default function Home() {
             />
           )}
 
-          {step === 'procedure' && user && (
+          {step === 'order' && user && (
             <ProcedureSelection
               userId={user.id}
               user={user}
@@ -291,7 +342,37 @@ export default function Home() {
               onAddToCart={handleAddToCart}
               onRemoveFromCart={handleRemoveFromCart}
               onCheckout={handleCheckout}
+              hideCartUI
             />
+          )}
+
+          {step === 'visit' && user && (
+            <CartView
+              cart={cart}
+              onRemoveFromCart={handleRemoveFromCart}
+              onCheckout={handleCheckout}
+              onGoToOrder={handleGoToOrder}
+            />
+          )}
+
+          {step === 'process' && (
+            <>
+              {user && (
+                <p className="text-[13px] text-[var(--app-text-secondary)] font-medium px-0.5 mb-4">Your visit</p>
+              )}
+              {ordersLoading ? (
+                <div className="py-16 text-center rounded-2xl bg-white/80 shadow-sm border border-gray-100">
+                  <p className="text-[var(--app-text-secondary)] text-sm font-medium">Loading your orders…</p>
+                </div>
+              ) : orders.length > 0 ? (
+                <OrderStatus orders={orders} />
+              ) : (
+                <div className="py-16 text-center rounded-2xl bg-white/80 shadow-sm border border-gray-100">
+                  <p className="text-[var(--app-text-secondary)] text-sm font-medium">No orders yet</p>
+                  <p className="text-gray-400 text-[13px] mt-1">Choose procedures and pay to track your visit here.</p>
+                </div>
+              )}
+            </>
           )}
 
           {step === 'payment' && orders.length > 0 && checkoutProcedures.length > 0 && (
@@ -303,16 +384,56 @@ export default function Home() {
                 setCart([...checkoutProcedures])
                 setOrders([])
                 setCheckoutProcedures([])
-                setStep('procedure')
+                setStep('visit')
               }}
             />
           )}
-
-          {step === 'status' && orders.length > 0 && (
-            <OrderStatus orders={orders} />
-          )}
         </div>
       </main>
+
+      {/* Bottom nav: Order | Pay (cart) | Process */}
+      {showBottomNav && (
+        <nav className="flex-shrink-0 z-40 w-full max-w-app mx-auto bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)] grid grid-cols-3">
+          <button
+            type="button"
+            onClick={() => setStep('order')}
+            className={`flex flex-col items-center justify-center py-3 gap-1 relative min-w-0 ${step === 'order' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <span className="text-xl shrink-0" aria-hidden>🩺</span>
+            <span className="text-xs font-medium truncate w-full text-center">Order</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStep('visit')}
+            className={`flex flex-col items-center justify-center py-3 gap-1 relative min-w-0 ${step === 'visit' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <span className="text-xl relative inline-block shrink-0" aria-hidden>
+              💳
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center px-1">
+                  {cart.length}
+                </span>
+              )}
+            </span>
+            <span className="text-xs font-medium truncate w-full text-center">Pay</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStep('process')}
+            className={`flex flex-col items-center justify-center py-3 gap-1 relative min-w-0 ${step === 'process' ? 'text-blue-600' : 'text-gray-500'}`}
+          >
+            <span className="text-xl relative inline-block shrink-0" aria-hidden>
+              📋
+              {orders.length > 0 && (
+                <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] rounded-full bg-green-600 text-white text-[10px] font-bold flex items-center justify-center px-1">
+                  {orders.length}
+                </span>
+              )}
+            </span>
+            <span className="text-xs font-medium truncate w-full text-center">Process</span>
+          </button>
+        </nav>
+      )}
     </div>
   )
 }

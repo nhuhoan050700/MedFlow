@@ -12,7 +12,8 @@ if (-not $env:DATABASE_URL) {
 $migrations = @(
     "001_add_birthday_replace_age.sql",
     "002_add_address.sql",
-    "003_generate_queue_number_arr.sql"
+    "003_generate_queue_number_arr.sql",
+    "004_add_test_procedure.sql"
 )
 
 foreach ($f in $migrations) {

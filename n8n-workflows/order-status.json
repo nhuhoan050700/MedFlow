@@ -18,8 +18,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT o.*, p.name as procedure_name FROM orders o JOIN procedures p ON o.procedure_id = p.id WHERE o.id = $1",
-        "additionalFields": {}
+        "query": "SELECT o.id, o.order_number, o.user_id, o.status, o.payment_status, o.payment_intent_id, o.total_amount, o.paid_at, o.created_at, o.updated_at, o.completed_at, o.room_number, o.procedure_name, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = $1",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.query?.order_id] }}"
+        }
       },
       "id": "get-order",
       "name": "Get Order",

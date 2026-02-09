@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
+import { formatVnd } from '@/lib/format'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 interface OrderItem {
@@ -147,12 +148,12 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
         {procedures.map((proc, i) => (
           <div key={i} className="flex justify-between text-sm py-1">
             <span className="text-gray-700 truncate flex-1">{proc.name}</span>
-            <span className="font-medium text-gray-900 shrink-0 ml-2">${Number(proc.price).toFixed(2)}</span>
+            <span className="font-medium text-gray-900 shrink-0 ml-2">{formatVnd(Number(proc.price))}</span>
           </div>
         ))}
         <div className="flex justify-between font-semibold mt-3 pt-3 border-t border-gray-200">
           <span>Total</span>
-          <span>${total.toFixed(2)}</span>
+          <span>{formatVnd(total)}</span>
         </div>
       </div>
 
@@ -214,7 +215,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
               disabled={!stripe || processing}
               className={`h-12 rounded-xl bg-blue-600 text-white font-semibold touch-target disabled:opacity-50 active:bg-blue-700 ${onCancel ? 'flex-1' : 'w-full'}`}
             >
-              {processing ? 'Processing…' : `Pay $${total.toFixed(2)}`}
+              {processing ? 'Processing…' : `Pay ${formatVnd(total)}`}
             </button>
           </div>
           <p className="text-center text-gray-400 text-xs">Secure payment by Stripe</p>

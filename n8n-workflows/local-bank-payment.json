@@ -47,7 +47,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET payment_status = 'paid', status = 'paid', payment_intent_id = COALESCE(NULLIF(TRIM($2), ''), payment_intent_id) WHERE id = ANY($1) AND payment_status != 'paid' RETURNING id, order_number",
+        "query": "UPDATE orders SET payment_status = 'paid', status = 'paid', paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP), payment_intent_id = COALESCE(NULLIF(TRIM($2), ''), payment_intent_id) WHERE id = ANY($1) AND payment_status != 'paid' RETURNING id, order_number",
         "additionalFields": {
           "queryParameters": "={{ [$('Bank Payment Webhook').item.json.body.order_ids, 'bank:' + ($('Bank Payment Webhook').item.json.body.reference || 'manual')] }}"
         }
@@ -67,7 +67,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET payment_status = 'paid', status = 'paid', payment_intent_id = COALESCE(NULLIF(TRIM($2), ''), payment_intent_id) WHERE id = $1 AND payment_status != 'paid' RETURNING id, order_number",
+        "query": "UPDATE orders SET payment_status = 'paid', status = 'paid', paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP), payment_intent_id = COALESCE(NULLIF(TRIM($2), ''), payment_intent_id) WHERE id = $1 AND payment_status != 'paid' RETURNING id, order_number",
         "additionalFields": {
           "queryParameters": "={{ [$('Bank Payment Webhook').item.json.body.order_id, 'bank:' + ($('Bank Payment Webhook').item.json.body.reference || 'manual')] }}"
         }

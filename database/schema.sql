@@ -30,14 +30,14 @@ CREATE TABLE IF NOT EXISTS procedures (
 CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
     order_number VARCHAR(50) UNIQUE NOT NULL,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    procedure_id INTEGER REFERENCES procedures(id),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    procedure_name VARCHAR(255),
     status VARCHAR(50) DEFAULT 'pending', -- pending, paid, assigned, in_progress, completed
     payment_status VARCHAR(50) DEFAULT 'unpaid', -- unpaid, paid, failed
     payment_intent_id VARCHAR(255),
     room_number VARCHAR(50),
-    queue_number VARCHAR(50),
     total_amount DECIMAL(10, 2),
+    paid_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP
@@ -80,6 +80,11 @@ INSERT INTO procedures (name, description, price, duration_minutes, room_number)
 ('ECG', 'Electrocardiogram test', 60.00, 15, 'Room 4')
 ON CONFLICT DO NOTHING;
 
+-- Test procedure (10000 VND)
+INSERT INTO procedures (name, description, price, duration_minutes, room_number) VALUES
+('Test', 'Test - 10000 VND', 10000.00, 15, 'Room 6')
+ON CONFLICT DO NOTHING;
+
 -- Insert sample worker
 INSERT INTO workers (email, name, role) VALUES
 ('staff@hospital.com', 'Medical Staff', 'staff')
@@ -105,41 +110,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to generate queue number
-CREATE OR REPLACE FUNCTION generate_queue_number(proc_room VARCHAR) RETURNS VARCHAR(50) AS $$
-DECLARE
-    room_prefix VARCHAR(5);
-    queue_num INTEGER;
-    new_queue_number VARCHAR(50);
-BEGIN
-    -- Extract room prefix (e.g., "Room 2" -> "R2")
-    room_prefix := UPPER(SUBSTRING(proc_room FROM 'Room (\d+)'));
-    IF room_prefix = '' THEN
-        room_prefix := 'A';
-    ELSE
-        room_prefix := 'R' || room_prefix;
-    END IF;
-    
-    -- Get next queue number for this room today
-    SELECT COALESCE(MAX(CAST(SUBSTRING(queue_number FROM 3) AS INTEGER)), 0) + 1
-    INTO queue_num
-    FROM orders
-    WHERE room_number = proc_room
-    AND DATE(created_at) = CURRENT_DATE
-    AND queue_number IS NOT NULL;
-    
-    new_queue_number := room_prefix || '-' || LPAD(queue_num::TEXT, 3, '0');
-    RETURN new_queue_number;
-END;
-$$ LANGUAGE plpgsql;
-
--- Wrapper for n8n (passes array; uses first element for generate_queue_number)
-CREATE OR REPLACE FUNCTION generate_queue_number_arr(proc_room_arr anyarray) RETURNS VARCHAR(50) AS $$
-BEGIN
-  RETURN generate_queue_number(proc_room_arr[1]::text);
-END;
-$$ LANGUAGE plpgsql;
-
 -- Trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -154,3 +124,9 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
 
 CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Set default timezone to Vietnam (UTC+7) for all connections.
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET timezone TO ''Asia/Ho_Chi_Minh''', current_database());
+END $$;

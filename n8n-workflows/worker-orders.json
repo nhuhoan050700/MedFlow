@@ -18,8 +18,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT o.*, u.name as user_name, p.name as procedure_name FROM orders o JOIN users u ON o.user_id = u.id JOIN procedures p ON o.procedure_id = p.id WHERE ($1::text IS NULL OR o.status = $1) ORDER BY o.created_at DESC LIMIT 100",
-        "additionalFields": {}
+        "query": "SELECT o.*, u.name as user_name FROM orders o JOIN users u ON o.user_id = u.id WHERE ($1::text IS NULL OR $1 = 'all' OR o.status = $1) AND o.payment_status = 'paid' ORDER BY o.paid_at ASC NULLS LAST, o.id ASC LIMIT 100",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.query?.status && $json.query.status !== 'all' ? $json.query.status : null] }}"
+        }
       },
       "id": "get-orders",
       "name": "Get Orders",

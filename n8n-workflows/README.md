@@ -24,7 +24,8 @@ All 4 of these must be true:
 ### Steps in n8n
 
 1. **Import**  
-   Workflows → Import from File → choose `procedure-selection.json`.
+   Workflows → Import from File → choose `procedure-selection.json`.  
+   **Re-import** if you already have it — the workflow was updated to correctly read `procedure_id` from the webhook body (fixes orders with NULL procedure_name/room_number).
 
 2. **Credentials**  
    Open the **Get Procedures** (Postgres) node → set credentials to your **PostgreSQL Railway** connection.
@@ -100,6 +101,16 @@ Body: { order_ids: [1, 2, 3], amount: 50000, paymentMethodId: "pm_xxx" }
 
 Import and activate `cart-payment.json` (same credentials as Payment Processing). This workflow processes a single Stripe payment and updates all listed orders to `paid`.
 
+## SePay (VietQR) and order status
+
+- **SePay IPN** (`sepay-ipn.json`): When SePay sends a payment notification, the frontend forwards it to `POST {N8N_BASE}/sepay-ipn`. The workflow:
+  1. Updates orders by `order_invoice_number` to `payment_status = 'paid'` and `status = 'paid'`
+  2. **Sends a confirmation email** to the user (email from `users` table) with order details: order number, procedure, room, amount (VND), payment time
+  - Import, set **Postgres** and **SMTP** credentials, and **activate**. Email is only sent if the user has an email address.
+- When the user lands on the payment success page, the app also calls `/api/payment/sepay/confirm`, which forwards to the same `sepay-ipn` webhook so the order is marked paid even if the IPN was delayed.
+- **Order by number** (`order-by-number.json`): `GET {N8N_BASE}/order-by-number?order_number=20260207-0001` returns one order with `procedure_name` for the success page and process tab. Import, set Postgres credentials, and activate.
+- **My orders** (`my-orders.json`): `GET {N8N_BASE}/my-orders?user_id=42` returns paid orders for that user (for the frontend Process tab when the user has no orders in state). Uses LEFT JOIN procedures so orders with `procedure_id` NULL still appear. Import, set Postgres credentials, and activate.
+
 ## Update Profile (user details)
 
 When a user clicks their avatar and saves name/birthday/phone/address, the frontend calls:
@@ -112,3 +123,18 @@ Body: { user_id: 123, name: "Jane", birthday: "1990-05-15", phone: "+1234567890"
 Import and activate `update-profile.json`. Use the same Postgres credentials as Check-In. The workflow updates the `users` table in Railway (name, birthday, phone, address) and returns the updated user.
 
 **Database:** The `users` table uses `birthday` (DATE) and `address` (TEXT). If you have an existing DB: run `database/migrations/001_add_birthday_replace_age.sql` and `database/migrations/002_add_address.sql` once.
+
+## Payment confirmation email (SePay)
+
+When a user pays via SePay and the IPN is received, the **SePay IPN** workflow sends an email to the user's address (from the `users` table). The email includes:
+
+- Order number
+- Procedure name
+- Room number
+- Amount (VND)
+- Payment time (Vietnam timezone)
+
+**Requirements:**
+1. **SMTP credentials** in n8n: Credentials → Add → SMTP (e.g. Gmail with app password, or SendGrid, etc.)
+2. The **Send Email** node in `sepay-ipn.json` uses `fromEmail: noreply@hospital.com` — update this in the workflow to match your domain (many SMTP providers require the sender to match your account).
+3. Users must have an `email` in the `users` table (from Google sign-in or check-in).

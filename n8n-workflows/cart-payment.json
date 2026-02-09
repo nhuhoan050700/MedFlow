@@ -70,7 +70,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET payment_status = 'paid', payment_intent_id = $2, status = 'paid' WHERE id = ANY($1) RETURNING id",
+        "query": "UPDATE orders SET payment_status = 'paid', payment_intent_id = $2, status = 'paid', paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP) WHERE id = ANY($1) RETURNING id",
         "additionalFields": {
           "queryParameters": "={{ [$('Cart Payment Webhook').item.json.body.order_ids, $('Process Stripe Payment').item.json.id] }}"
         }

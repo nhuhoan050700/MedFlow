@@ -14,7 +14,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const n8nBase = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || 'https://nhuhoang.app.n8n.cloud/webhook'
+    // Default to local n8n when no env is set, so dev works without n8n.cloud
+    const n8nBase = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || 'http://localhost:5678/webhook'
     const n8nRes = await fetch(
       `${n8nBase}/check-in`,
       {

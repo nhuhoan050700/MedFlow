@@ -2,7 +2,7 @@
 
 A comprehensive QR-based patient check-in system built with n8n, PostgreSQL, and modern web technologies.
 
-## 🏥 System Overview
+## System Overview
 
 This system automates the entire patient journey from check-in to test completion:
 
@@ -16,7 +16,7 @@ This system automates the entire patient journey from check-in to test completio
 8. **Worker Dashboard** → Staff interface to mark tests as completed
 9. **Real-time Updates** → Live status synchronization
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Workflow Engine**: n8n (self-hosted or cloud)
 - **Database**: PostgreSQL (Railway)
@@ -27,7 +27,7 @@ This system automates the entire patient journey from check-in to test completio
 - **Analytics**: Azure Data Factory + Power BI
 - **Deployment**: Vercel (frontend), Railway (database)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
@@ -54,7 +54,7 @@ This system automates the entire patient journey from check-in to test completio
 └── README.md
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Database Setup (Railway)
 
@@ -107,7 +107,7 @@ npm install
 npm run dev
 ```
 
-## 📋 Workflow Details
+## Workflow Details
 
 ### Check-in Workflow
 - Receives QR scan data
@@ -134,7 +134,7 @@ npm run dev
 - Updates database
 - Notifies patient (real-time)
 
-## 🔐 Environment Variables
+## Environment Variables
 
 ### n8n
 - `DB_POSTGRES_HOST`
@@ -149,22 +149,22 @@ npm run dev
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 - `NEXT_PUBLIC_DATABASE_URL`
 
-## 📱 Features
+## Features
 
-- ✅ QR code-based check-in
-- ✅ Google OAuth authentication
-- ✅ Procedure selection with pricing
-- ✅ Stripe payment integration
-- ✅ Automated email notifications
-- ✅ Queue number generation
-- ✅ Room assignment logic
-- ✅ Audio guidance (Text-to-Speech)
-- ✅ Real-time status updates
-- ✅ Worker dashboard for staff
-- ✅ Analytics pipeline (ADF + Power BI)
-- ✅ Automated business intelligence dashboards
+- QR code-based check-in
+- Google OAuth authentication
+- Procedure selection with pricing
+- Stripe payment integration
+- Automated email notifications
+- Queue number generation
+- Room assignment logic
+- Audio guidance (Text-to-Speech)
+- Real-time status updates
+- Worker dashboard for staff
+- Analytics pipeline (ADF + Power BI)
+- Automated business intelligence dashboards
 
-## 🎯 CV Highlights
+## CV Highlights
 
 This project demonstrates:
 - **Event-driven architecture** with n8n workflows
@@ -174,6 +174,6 @@ This project demonstrates:
 - **Workflow automation** for healthcare processes
 - **Database design** and optimization
 
-## 📝 License
+## License
 
 MIT

@@ -1,0 +1,66 @@
+{
+  "name": "Get Order By Number",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "order-by-number",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-order-by-number",
+      "name": "Order By Number Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "order-by-number"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT o.id, o.order_number, o.user_id, o.status, o.payment_status, o.payment_intent_id, o.total_amount, o.paid_at, o.created_at, o.updated_at, o.completed_at, o.room_number, o.procedure_name, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.order_number = $1",
+        "additionalFields": {
+          "queryParameters": "={{ [Array.isArray($json.query?.order_number) ? $json.query.order_number[0] : ($json.query?.order_number ?? '')] }}"
+        }
+      },
+      "id": "get-order-by-number",
+      "name": "Get Order By Number",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Railway"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"order\": $json[0] || null } }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Order By Number Webhook": {
+      "main": [[{ "node": "Get Order By Number", "type": "main", "index": 0 }]]
+    },
+    "Get Order By Number": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-07T00:00:00.000Z",
+  "versionId": "1"
+}

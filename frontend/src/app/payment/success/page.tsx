@@ -1,12 +1,53 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams()
-  const order = searchParams.get('order') || ''
+  const orderNumber = searchParams.get('order') || ''
+  const [confirmed, setConfirmed] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
+
+  useEffect(() => {
+    if (!orderNumber) return
+
+    let cancelled = false
+    const run = async () => {
+      try {
+        const res = await fetch('/api/payment/sepay/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_number: orderNumber }),
+        })
+        if (!cancelled) setConfirmed(res.ok)
+
+        const n8nUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || ''
+        if (!n8nUrl) {
+          if (!cancelled) setRedirecting(true)
+          return
+        }
+        const orderRes = await fetch(`${n8nUrl}/order-by-number?order_number=${encodeURIComponent(orderNumber)}`)
+        const data = await orderRes.json().catch(() => ({}))
+        if (!cancelled && data.success && data.order) {
+          try {
+            localStorage.setItem('checkin_orders', JSON.stringify([data.order]))
+          } catch (_) {}
+        }
+        if (!cancelled) setRedirecting(true)
+      } catch (_) {
+        if (!cancelled) setRedirecting(true)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [orderNumber])
+
+  useEffect(() => {
+    if (!redirecting || !orderNumber) return
+    window.location.href = `/?step=process`
+  }, [redirecting, orderNumber])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50">
@@ -18,14 +59,22 @@ function PaymentSuccessContent() {
         </div>
         <h1 className="text-xl font-semibold text-gray-900 mb-2">Payment successful</h1>
         <p className="text-gray-600 text-sm mb-6">
-          Your payment has been received. {order && `Order ${order} will be updated shortly.`}
+          Your payment has been received.
+          {orderNumber && ` Order ${orderNumber} has been confirmed${confirmed ? '' : '.'}.`}
+          {redirecting && ' Taking you to your visit…'}
         </p>
-        <Link
-          href="/"
-          className="inline-block w-full py-3 px-4 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition"
-        >
-          Return to check-in
-        </Link>
+        {redirecting ? (
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-green-600 border-t-transparent" />
+          </div>
+        ) : (
+          <Link
+            href="/?step=process"
+            className="inline-block w-full py-3 px-4 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition"
+          >
+            View my visit
+          </Link>
+        )}
       </div>
     </div>
   )

@@ -70,7 +70,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE orders SET payment_status = 'paid', payment_intent_id = $1, status = 'paid' WHERE id = $2 RETURNING *",
+        "query": "UPDATE orders SET payment_status = 'paid', payment_intent_id = $1, status = 'paid', paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP) WHERE id = $2 RETURNING *",
         "additionalFields": {
           "queryParameters": "={{ [$('Process Stripe Payment').item.json.id, $('Payment Webhook').item.json.body.order_id] }}"
         }
@@ -90,7 +90,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT o.*, u.email, u.name as user_name, p.name as procedure_name FROM orders o JOIN users u ON o.user_id = u.id JOIN procedures p ON o.procedure_id = p.id WHERE o.id = $1",
+        "query": "SELECT o.*, u.email, u.name as user_name FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = $1",
         "additionalFields": {
           "queryParameters": "={{ [$json.id] }}"
         }

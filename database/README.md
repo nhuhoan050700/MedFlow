@@ -70,3 +70,12 @@ psql "$DATABASE_URL" -f database/schema.sql
 ```
 
 Then run any migrations that add columns/functions added after the schema (e.g. 002, 003) if they’re not already in your schema.sql.
+
+## Timezone (Vietnam)
+
+All timestamps are in **Vietnam time** (Asia/Ho_Chi_Minh, UTC+7). Run migration `010_vietnam_timezone.sql` to set the database default. This affects:
+
+- `CURRENT_TIMESTAMP`, `now()`, `paid_at`, `created_at`, etc.
+- Railway SQL Query tab, n8n Postgres node, and Node.js scripts
+
+If the migration hasn't been applied, the Node.js scripts (`run-migration.js`, `fix-unpaid-order.js`) set the timezone on connect as a fallback.

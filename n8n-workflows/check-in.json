@@ -43,7 +43,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nlet data = item.body ?? item.data ?? item.json ?? item;\nif (typeof data === 'string') data = JSON.parse(data);\nconst birthday = data.birthday != null && String(data.birthday).trim() ? String(data.birthday).trim() : null;\nreturn [{ json: {\n  google_id: data.google_id ?? null,\n  email: data.email ?? null,\n  name: data.name ?? null,\n  birthday,\n  phone: data.phone ?? null\n}}];"
+        "jsCode": "const item = $input.first().json;\nlet data = item.body ?? item.data ?? item.json ?? item;\n\nif (typeof data === 'string') {\n  try {\n    data = JSON.parse(data);\n  } catch {\n    data = {};\n  }\n}\n\nconst toVal = (v) => (v != null && String(v).trim() !== '') ? String(v).trim() : null;\nconst google_id = toVal(data.google_id);\nconst email = data.email ? String(data.email).trim() : null;\nconst name = data.name ? String(data.name).trim() : null;\nconst birthday = toVal(data.birthday);\nconst phone = toVal(data.phone);\nconst address = toVal(data.address);\nconst params = [google_id, email, name, birthday, phone, address];\nreturn [{ json: { google_id, email, name, birthday, phone, address, params } }];"
       },
       "id": "extract-body",
       "name": "Extract Body",
@@ -54,9 +54,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO users (google_id, email, name, birthday, phone) VALUES ($1, $2, $3, $4::date, $5) ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, birthday = EXCLUDED.birthday, phone = EXCLUDED.phone RETURNING *",
+        "query": "INSERT INTO users (google_id, email, name, birthday, phone, address)\nVALUES ($1, $2, $3, $4::date, $5, $6)\nON CONFLICT (google_id) DO UPDATE\nSET\n  email    = EXCLUDED.email,\n  name     = EXCLUDED.name,\n  birthday = EXCLUDED.birthday,\n  phone    = EXCLUDED.phone,\n  address  = EXCLUDED.address\nRETURNING *;",
         "additionalFields": {
-          "queryParameters": "={{ [$json.google_id, $json.email, $json.name, $json.birthday ?? null, $json.phone ?? null] }}"
+          "queryParameters": "={{ $json.params }}"
         }
       },
       "id": "create-user",
@@ -70,6 +70,12 @@
         "assignments": {
           "assignments": [
             {
+              "id": "success",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            },
+            {
               "id": "user-data",
               "name": "user",
               "value": "={{ $json }}",
@@ -78,7 +84,7 @@
             {
               "id": "session-token",
               "name": "sessionToken",
-              "value": "={{ $json.id }}-{{ $now.toMillis() }}",
+              "value": "={{ $json.id }}-{{$now.toMillis()}}",
               "type": "string"
             }
           ]
@@ -93,8 +99,7 @@
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { \"success\": true, \"user\": $json.user, \"sessionToken\": $json.sessionToken } }}",
+        "respondWith": "firstIncomingItem",
         "options": {}
       },
       "id": "respond",
@@ -106,29 +111,59 @@
   ],
   "connections": {
     "Check-In Webhook (GET)": {
-      "main": [[
-        { "node": "Respond GET", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Respond GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Check-In Webhook": {
-      "main": [[
-        { "node": "Extract Body", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Extract Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Extract Body": {
-      "main": [[
-        { "node": "Create/Update User", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Create/Update User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Create/Update User": {
-      "main": [[
-        { "node": "Prepare Response", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Prepare Response": {
-      "main": [[
-        { "node": "Respond", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
@@ -138,6 +173,5 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2026-01-26T00:00:00.000Z",
   "versionId": "1"
 }

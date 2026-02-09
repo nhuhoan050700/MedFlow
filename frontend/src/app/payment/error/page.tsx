@@ -24,7 +24,7 @@ function PaymentErrorContent() {
           href="/"
           className="inline-block w-full py-3 px-4 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition"
         >
-          Return to check-in
+          Return to homepage
         </Link>
       </div>
     </div>

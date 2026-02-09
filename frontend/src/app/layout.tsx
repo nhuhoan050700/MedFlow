@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import GoogleOAuthProviderWrapper from '@/components/GoogleOAuthProviderWrapper'
+import GoogleTag from '@/components/GoogleTag'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="overflow-x-hidden">
       <body className="overflow-x-hidden antialiased">
+        <GoogleTag />
         <GoogleOAuthProviderWrapper clientId={googleClientId}>
           <div className="min-w-0 overflow-x-hidden max-w-[100vw]">
             {children}

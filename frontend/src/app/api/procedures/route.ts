@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const N8N_BASE = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || 'https://nhuhoang.app.n8n.cloud/webhook';
+// Default to local n8n when no env is set, so dev works without n8n.cloud
+const N8N_BASE = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL || 'http://localhost:5678/webhook';
 
 /** Ensure procedures is always an array (n8n or proxy may return object) */
 function ensureProceduresArray(data: { success?: boolean; procedures?: unknown; error?: string }): unknown[] {

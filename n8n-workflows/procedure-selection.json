@@ -64,7 +64,7 @@
         "operation": "executeQuery",
         "query": "SELECT * FROM procedures WHERE id = ANY($1::integer[])",
         "additionalFields": {
-          "queryParameters": "={{ [$json.procedure_id] }}"
+          "queryParameters": "={{ [($json.body && $json.body.procedure_id != null) ? $json.body.procedure_id : $json.procedure_id] }}"
         }
       },
       "id": "get-procedure",
@@ -82,10 +82,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT generate_order_number() as order_number, generate_queue_number_arr($1) as queue_number",
-        "additionalFields": {
-          "queryParameters": "={{ [$json.room_number] }}"
-        }
+        "query": "SELECT generate_order_number() as order_number",
+        "additionalFields": {}
       },
       "id": "generate-numbers",
       "name": "Generate Order & Queue Numbers",
@@ -101,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $('Select Procedure').first().json;\nconst webhook = raw.body || raw;\nconst procedure = $('Get Procedure Details').first().json;\nconst gen = $('Generate Order & Queue Numbers').first().json;\nconst user_id = Number(webhook.user_id) || null;\nconst procedure_id = procedure?.id != null ? Number(procedure.id) : null;\nconst total_amount = procedure?.price != null ? Number(procedure.price) : null;\nconst order_number = gen?.order_number ?? '';\nconst room_number = procedure?.room_number ?? '';\nconst queue_number = gen?.queue_number ?? '';\nreturn [{ json: {\n  order_number,\n  user_id,\n  procedure_id,\n  total_amount,\n  room_number,\n  queue_number\n} }];"
+        "jsCode": "const raw = $('Select Procedure').first().json;\nconst webhook = raw.body || raw;\nconst procedure = $('Get Procedure Details').first().json;\nconst gen = $('Generate Order & Queue Numbers').first().json;\nconst user_id = Number(webhook.user_id) || null;\nif (user_id == null || user_id < 1) throw new Error('user_id is required so we know who purchased this order');\nconst total_amount = procedure?.price != null ? Number(procedure.price) : null;\nconst order_number = gen?.order_number ?? '';\nconst room_number = procedure?.room_number ?? '';\nconst procedure_name = procedure?.name ?? '';\nreturn [{ json: { order_number, user_id, procedure_name, total_amount, room_number } }];"
       },
       "id": "prepare-order",
       "name": "Prepare Order Row",
@@ -112,9 +110,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO orders (order_number, user_id, procedure_id, status, total_amount, room_number, queue_number) VALUES ($1, $2, $3, 'pending', $4, $5, $6) RETURNING *",
+        "query": "INSERT INTO orders (order_number, user_id, procedure_name, status, total_amount, room_number) VALUES ($1, $2, $3, 'pending', $4, $5) RETURNING *",
         "additionalFields": {
-          "queryParameters": "={{ [$json.order_number, $json.user_id, $json.procedure_id, $json.total_amount, $json.room_number, $json.queue_number] }}"
+          "queryParameters": "={{ [$json.order_number, $json.user_id, $json.procedure_name, $json.total_amount, $json.room_number] }}"
         }
       },
       "id": "create-order",
