@@ -11,7 +11,7 @@ QR-based patient check-in and visit flow. Customer scans a QR code, signs in wit
 - **Follow procedures** → Procedures are shown for the user to follow (e.g. order and status per procedure).
 - **Worker dashboard** → Paid procedures are shown on the worker dashboard so staff can follow and execute them (e.g. mark in progress or done).
 - **Cloud database** → All data is stored in a cloud-based database.
-- **Analytics dashboard** → Interactive revenue analytics page with time-series charts (Recharts) powered by live data from the database. The repo also includes optional reference materials for Azure Data Factory ETL to Azure SQL and Power BI (see `analytics/`); the running app does not use ADF.
+- **Analytics dashboard** → Interactive revenue analytics page with time-series charts (Recharts) powered by live data from the database.
 
 ## Project structure
 
