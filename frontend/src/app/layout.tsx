@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from 'next'
 import GoogleOAuthProviderWrapper from '@/components/GoogleOAuthProviderWrapper'
 import GoogleTag from '@/components/GoogleTag'
+import { LanguageProvider } from '@/contexts/LanguageContext'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Hospital Testing Service Center',
-  description: 'QR-based patient check-in system',
+  title: 'MedFlow',
+  description: 'QR-based patient check-in and visit flow',
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
@@ -34,9 +35,11 @@ export default function RootLayout({
       <body className="overflow-x-hidden antialiased">
         <GoogleTag />
         <GoogleOAuthProviderWrapper clientId={googleClientId}>
-          <div className="min-w-0 overflow-x-hidden max-w-[100vw]">
-            {children}
-          </div>
+          <LanguageProvider>
+            <div className="min-w-0 overflow-x-hidden max-w-[100vw]">
+              {children}
+            </div>
+          </LanguageProvider>
         </GoogleOAuthProviderWrapper>
       </body>
     </html>

@@ -1,97 +1,121 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { formatVnd } from '@/lib/format'
+import { useState, useEffect, useMemo, useRef } from 'react'
 
-interface Order {
+/** One row = one order_item (procedure) with order + user info */
+interface OrderItem {
   id: number
-  order_number: string
-  room_number: string
-  status: string
-  payment_status: string
-  total_amount: number
-  created_at: string
+  order_id: number
+  order_number?: string
+  procedure_name: string | null
+  room_number: string | null
   user_name: string
-  procedure_name: string
+  user_id?: number
+  status: string
 }
 
 export default function OrderList() {
-  const [orders, setOrders] = useState<Order[]>([])
+  const [items, setItems] = useState<OrderItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('paid')
+  const [filter, setFilter] = useState<string>('pending')
   const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const localStatusUpdates = useRef<Record<number, string>>({})
 
   useEffect(() => {
     fetchOrders()
-  }, [filter])
+  }, [])
 
   const fetchOrders = async () => {
     try {
       setError(null)
-      const url = filter === 'all'
-        ? '/api/worker-orders'
-        : `/api/worker-orders?status=${encodeURIComponent(filter)}`
-
-      const response = await fetch(url)
+      setLoading(true)
+      const url = '/api/worker-orders'
+      const response = await fetch(url, { cache: 'no-store' })
       const data = await response.json()
 
       if (!response.ok) {
         setError(data?.error || 'Failed to load orders')
-        setOrders([])
+        setItems([])
         return
       }
-      if (data.success) {
-        setOrders(Array.isArray(data.orders) ? data.orders : [])
+      if (data.success && Array.isArray(data.orders)) {
+        const rows = data.orders.map((o: Record<string, unknown>) => {
+          const id = Number(o.item_id ?? o.id ?? 0)
+          const serverStatus = String(o.status ?? 'pending')
+          // Prefer server status so refresh shows persisted state; keep local only for optimistic UI until next fetch
+          const status = localStatusUpdates.current[id] ?? serverStatus
+          if (serverStatus === localStatusUpdates.current[id]) {
+            delete localStatusUpdates.current[id]
+          }
+          return {
+            id,
+            order_id: Number(o.order_id ?? o.id ?? 0),
+            order_number: o.order_number != null ? String(o.order_number) : undefined,
+            procedure_name: o.procedure_name != null ? String(o.procedure_name) : null,
+            room_number: o.room_number != null ? String(o.room_number) : null,
+            user_name: o.user_name != null ? String(o.user_name) : '',
+            user_id: o.user_id != null ? Number(o.user_id) : undefined,
+            status,
+          }
+        })
+        setItems(rows)
       } else {
-        setOrders([])
+        setItems([])
       }
     } catch (err) {
       console.error('Error fetching orders:', err)
-      setError('Cannot reach server. Is the worker dashboard and n8n running?')
-      setOrders([])
+      setError('Cannot reach server. Is the worker dashboard running?')
+      setItems([])
     } finally {
       setLoading(false)
     }
   }
 
-  const updateOrderStatus = async (orderId: number, newStatus: string) => {
+  const updateItemStatus = async (itemId: number, newStatus: string) => {
     try {
-      const response = await fetch('/api/update-status', {
+      const response = await fetch('/api/update-item-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: orderId,
-          status: newStatus,
-          worker_id: 1 // In production, get from auth
-        })
+        body: JSON.stringify({ item_id: itemId, status: newStatus }),
       })
 
       const data = await response.json()
       if (data.success) {
-        fetchOrders() // Refresh list
+        localStatusUpdates.current[itemId] = newStatus
+        setItems((prev) =>
+          prev.map((item) => (item.id === itemId ? { ...item, status: newStatus } : item))
+        )
+        setFilter(newStatus)
+      } else {
+        alert(data?.error || 'Failed to update status')
       }
-    } catch (error) {
-      console.error('Error updating order:', error)
+    } catch (err) {
+      console.error('Error updating order:', err)
       alert('Failed to update order status')
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'paid':
-        return 'bg-blue-100 text-blue-800'
-      case 'assigned':
-        return 'bg-purple-100 text-purple-800'
-      case 'in_progress':
-        return 'bg-orange-100 text-orange-800'
-      case 'completed':
-        return 'bg-green-100 text-green-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
+  const matchesFilter = (status: string) => {
+    if (filter === 'all') return true
+    if (filter === 'pending') return ['pending', 'paid', 'assigned'].includes(status)
+    if (filter === 'in_progress') return status === 'in_progress'
+    if (filter === 'completed') return status === 'completed'
+    return true
   }
+
+  const filteredItems = useMemo(() => {
+    let list = items.filter((row) => matchesFilter(row.status))
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter((row) => {
+        const matchOrderId = String(row.order_id).includes(q)
+        const matchUsername = (row.user_name ?? '').toLowerCase().includes(q)
+        return matchOrderId || matchUsername
+      })
+    }
+    return list
+  }, [items, search, filter])
 
   if (loading && !error) {
     return (
@@ -106,98 +130,103 @@ export default function OrderList() {
     return (
       <div className="bg-white rounded-lg shadow-lg p-8 text-center">
         <p className="text-red-600 font-medium">{error}</p>
-        <p className="mt-2 text-sm text-gray-500">Set N8N_WEBHOOK_URL or NEXT_PUBLIC_N8N_WEBHOOK_URL in .env.local (e.g. http://localhost:5678/webhook). Only paid orders are listed.</p>
+        <p className="mt-2 text-sm text-gray-500">Set DATABASE_URL in .env.local (Railway Postgres). Orders are loaded from the database.</p>
       </div>
     )
   }
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Orders</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('paid')}
-            className={`px-4 py-2 rounded-lg ${filter === 'paid' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            Paid
-          </button>
-          <button
-            onClick={() => setFilter('in_progress')}
-            className={`px-4 py-2 rounded-lg ${filter === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            In Progress
-          </button>
-          <button
-            onClick={() => setFilter('completed')}
-            className={`px-4 py-2 rounded-lg ${filter === 'completed' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            Done
-          </button>
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+        <h2 className="text-2xl font-semibold">Order items</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by order ID or username..."
+            className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilter('pending')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              Pending
+            </button>
+            <button
+              onClick={() => setFilter('in_progress')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${filter === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              In progress
+            </button>
+            <button
+              onClick={() => setFilter('completed')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${filter === 'completed' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            >
+              Done
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b">
-              <th className="text-left p-3">Order #</th>
-              <th className="text-left p-3">Customer</th>
-              <th className="text-left p-3">Procedure</th>
-              <th className="text-left p-3">Room</th>
-              <th className="text-left p-3">Status</th>
-              <th className="text-left p-3">Amount</th>
-              <th className="text-left p-3">Actions</th>
+            <tr className="border-b bg-gray-50">
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Id</th>
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Order ID</th>
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Procedure name</th>
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Room number</th>
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Username</th>
+              <th className="text-left p-3 text-sm font-semibold text-gray-700">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {orders.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center p-8 text-gray-500">
-                  No orders found
+                <td colSpan={6} className="text-center p-8 text-gray-500">
+                  {search.trim() ? 'No matching order items' : 'No order items found'}
                 </td>
               </tr>
             ) : (
-              orders.map((order) => (
-                <tr key={order.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3 font-semibold">{order.order_number}</td>
-                  <td className="p-3">{order.user_name}</td>
-                  <td className="p-3">{order.procedure_name ?? '—'}</td>
+              filteredItems.map((row) => (
+                <tr key={row.id} className="border-b hover:bg-gray-50">
+                  <td className="p-3 text-sm tabular-nums">{row.id}</td>
+                  <td className="p-3 text-sm font-semibold tabular-nums">{row.order_id}</td>
+                  <td className="p-3 text-sm">{row.procedure_name ?? '—'}</td>
                   <td className="p-3">
-                    <span className="font-semibold text-green-600">
-                      {order.room_number ?? '—'}
+                    <span className="font-semibold text-green-600 text-sm">
+                      {row.room_number ?? '—'}
                     </span>
                   </td>
+                  <td className="p-3 text-sm">{row.user_name || '—'}</td>
                   <td className="p-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
-                      {order.status.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="p-3">{formatVnd(Number(order.total_amount))}</td>
-                  <td className="p-3">
-                    <div className="flex gap-2">
-                      {(order.status === 'paid' || order.status === 'in_progress') && (
-                        <>
-                          <button
-                            onClick={() => updateOrderStatus(order.id, 'in_progress')}
-                            className={`text-sm px-3 py-1 rounded ${order.status === 'in_progress' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                          >
-                            Not done
-                          </button>
-                          <button
-                            onClick={() => updateOrderStatus(order.id, 'completed')}
-                            className="bg-green-600 hover:bg-green-700 text-white text-sm px-3 py-1 rounded"
-                          >
-                            Done
-                          </button>
-                        </>
-                      )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => updateItemStatus(row.id, 'pending')}
+                        className={`text-sm px-3 py-1.5 rounded font-medium ${['pending', 'paid', 'assigned'].includes(row.status) ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        Pending
+                      </button>
+                      <button
+                        onClick={() => updateItemStatus(row.id, 'in_progress')}
+                        className={`text-sm px-3 py-1.5 rounded font-medium ${row.status === 'in_progress' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        In progress
+                      </button>
+                      <button
+                        onClick={() => updateItemStatus(row.id, 'completed')}
+                        className={`text-sm px-3 py-1.5 rounded font-medium ${row.status === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                      >
+                        Done
+                      </button>
                     </div>
                   </td>
                 </tr>

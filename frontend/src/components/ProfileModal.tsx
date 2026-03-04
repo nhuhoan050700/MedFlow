@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 export type User = {
   id: number
@@ -20,6 +21,7 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ user, open, onClose, onSave, onSignOut }: ProfileModalProps) {
+  const { locale, setLocale } = useLanguage()
   const [name, setName] = useState(user.name)
   const [birthday, setBirthday] = useState(user.birthday ?? '')
   const [phone, setPhone] = useState(user.phone ?? '')
@@ -103,6 +105,25 @@ export default function ProfileModal({ user, open, onClose, onSave, onSignOut }:
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
+            <div className="flex rounded-xl border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLocale('vi')}
+                className={`flex-1 h-11 text-sm font-medium ${locale === 'vi' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+              >
+                Tiếng Việt
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocale('en')}
+                className={`flex-1 h-11 text-sm font-medium ${locale === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+              >
+                English
+              </button>
+            </div>
+          </div>
           <div>
             <label htmlFor="profile-name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input

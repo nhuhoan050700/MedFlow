@@ -1,0 +1,84 @@
+{
+  "name": "Revenue Analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "revenue-analytics",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-revenue",
+      "name": "Revenue Analytics Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "revenue-analytics"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst query = item.query || item.params || {};\nconst groupBy = (query.group_by || query.groupBy || 'day').toLowerCase();\nconst valid = ['day', 'week', 'year'];\nconst period = valid.includes(groupBy) ? groupBy : 'day';\nconst fromDate = query.from_date || query.from || null;\nconst toDate = query.to_date || query.to || null;\nreturn [{ json: { period, from_date: fromDate, to_date: toDate } }];"
+      },
+      "id": "normalize-params",
+      "name": "Normalize Params",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT (date_trunc($1::text, paid_at))::date AS period, COALESCE(SUM(total_amount), 0)::numeric(12,2) AS revenue, COUNT(*)::int AS order_count FROM unpaid_orders WHERE payment_status = 'paid' AND paid_at IS NOT NULL AND ($2::date IS NULL OR paid_at::date >= $2) AND ($3::date IS NULL OR paid_at::date <= $3) GROUP BY (date_trunc($1::text, paid_at))::date ORDER BY period",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.period, $json.from_date || null, $json.to_date || null] }}"
+        }
+      },
+      "id": "query-revenue",
+      "name": "Revenue by Period",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Railway"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst period = $('Normalize Params').first().json.period;\nconst data = items.map(i => ({ period: i.json.period, revenue: Number(i.json.revenue), order_count: Number(i.json.order_count || 0) }));\nreturn [{ json: { success: true, group_by: period, data } }];"
+      },
+      "id": "build-response",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Revenue Analytics Webhook": { "main": [[{ "node": "Normalize Params", "type": "main", "index": 0 }]] },
+    "Normalize Params": { "main": [[{ "node": "Revenue by Period", "type": "main", "index": 0 }]] },
+    "Revenue by Period": { "main": [[{ "node": "Build Response", "type": "main", "index": 0 }]] },
+    "Build Response": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-21T00:00:00.000Z",
+  "versionId": "1"
+}

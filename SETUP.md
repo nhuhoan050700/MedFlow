@@ -1,4 +1,4 @@
-# Setup Guide - Hospital Testing Service Center
+# Setup Guide - MedFlow
 
 This guide will walk you through setting up the entire system step by step.
 

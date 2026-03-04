@@ -52,7 +52,7 @@ Website  →  GET /api/procedures  →  Next.js  →  GET {N8N_BASE}/procedures
                                                       ↓
                                               n8n Webhook (path: procedures)
                                                       ↓
-                                              Postgres (SELECT * FROM procedures WHERE is_active = true)
+                                              Postgres (SELECT * FROM procedures ORDER BY name)
                                                       ↓
                                               Respond to Webhook { success, procedures }
                                                       ↓
@@ -64,7 +64,7 @@ Website  →  GET /api/procedures  →  Next.js  →  GET {N8N_BASE}/procedures
 - Confirm **Active** is ON for the Procedure Selection workflow.
 - Open the test URL in a new tab; if you get 404 or an error, the workflow isn’t active or the path is wrong.
 - In n8n, run the workflow manually (Execute Workflow) and check the **Get Procedures** and **Respond** nodes for errors or empty output.
-- The workflow query is `SELECT * FROM procedures WHERE is_active = true`. If your table has no `is_active` column or rows have `is_active = false`, you’ll get an empty list. Add the column or set `is_active = true` for the rows you want to show.
+- The workflow query is `SELECT * FROM procedures ORDER BY name`. If your table has no `is_active` column or rows have `is_active = false`, you’ll get an empty list. Add the column or set `is_active = true` for the rows you want to show.
 
 ## Payment: Stripe (card) and Local Bank
 
@@ -90,6 +90,17 @@ The workflow updates `orders` to `payment_status = 'paid'` and `status = 'paid'`
 3. **Activate** the workflow.
 4. Base URL is the same as other webhooks, e.g. `https://YOUR-N8N-DOMAIN/webhook/local-bank-payment`.
 
+## Cart Checkout (1 order, many procedures)
+
+The frontend uses **cart-checkout** to create **one order** with **multiple procedures** (order_items):
+
+```
+POST {NEXT_PUBLIC_N8N_WEBHOOK_URL}/cart-checkout
+Body: { user_id: 42, procedures: [{ id: 1, name: "Blood Test", price: 50, room: "Room 2" }, ...] }
+```
+
+Import and activate `cart-checkout.json`. Creates one order and multiple `order_items` rows (procedure_id, procedure_name, room_number, amount per item). Run migration `011_order_items.sql` first.
+
 ## Cart Payment (multi-procedure checkout, Stripe)
 
 When users add multiple procedures to the cart and pay by **card**, the frontend calls:
@@ -109,7 +120,7 @@ Import and activate `cart-payment.json` (same credentials as Payment Processing)
   - Import, set **Postgres** and **SMTP** credentials, and **activate**. Email is only sent if the user has an email address.
 - When the user lands on the payment success page, the app also calls `/api/payment/sepay/confirm`, which forwards to the same `sepay-ipn` webhook so the order is marked paid even if the IPN was delayed.
 - **Order by number** (`order-by-number.json`): `GET {N8N_BASE}/order-by-number?order_number=20260207-0001` returns one order with `procedure_name` for the success page and process tab. Import, set Postgres credentials, and activate.
-- **My orders** (`my-orders.json`): `GET {N8N_BASE}/my-orders?user_id=42` returns paid orders for that user (for the frontend Process tab when the user has no orders in state). Uses LEFT JOIN procedures so orders with `procedure_id` NULL still appear. Import, set Postgres credentials, and activate.
+- **My orders** (`my-orders.json`): `GET {N8N_BASE}/my-orders?user_id=42` returns orders for that user: **one row per order_item** with `procedure_name`, `room_number`, and **`status` from `order_items`** (pending, in_progress, completed). The frontend Process tab shows this status. **Re-import** `my-orders.json` if the Process page doesn’t update when the worker changes status in the worker dashboard — the workflow must read `oi.status` from `order_items`, not `o.status` from `orders`. Import, set Postgres credentials, and activate.
 
 ## Update Profile (user details)
 
@@ -126,15 +137,49 @@ Import and activate `update-profile.json`. Use the same Postgres credentials as 
 
 ## Payment confirmation email (SePay)
 
-When a user pays via SePay and the IPN is received, the **SePay IPN** workflow sends an email to the user's address (from the `users` table). The email includes:
+When a user pays (via SePay IPN or the success-page confirm), the **SePay IPN** workflow can send a confirmation email to the user's address from the `users` table. The email includes order number, procedure name, room number, amount (VND), and payment time (Vietnam timezone).
 
-- Order number
-- Procedure name
-- Room number
-- Amount (VND)
-- Payment time (Vietnam timezone)
+### How to set up the email
 
-**Requirements:**
-1. **SMTP credentials** in n8n: Credentials → Add → SMTP (e.g. Gmail with app password, or SendGrid, etc.)
-2. The **Send Email** node in `sepay-ipn.json` uses `fromEmail: noreply@hospital.com` — update this in the workflow to match your domain (many SMTP providers require the sender to match your account).
-3. Users must have an `email` in the `users` table (from Google sign-in or check-in).
+1. **Create SMTP credentials in n8n**
+   - n8n → **Credentials** → **Add credential** → **SMTP**.
+   - Fill in your provider (examples):
+     - **Gmail:** Host `smtp.gmail.com`, Port `587`, User = your Gmail, Password = [App Password](https://support.google.com/accounts/answer/185833).
+     - **SendGrid / other:** Use the host, port, user, and password they provide.
+   - Save and name it (e.g. **SMTP**).
+
+2. **Attach credentials to the SePay IPN workflow**
+   - Open the **SePay IPN** workflow (import `sepay-ipn.json` if you haven’t).
+   - Open the **Send Email** node.
+   - In **Credentials**, select the SMTP credential you created.
+   - Save the workflow.
+
+3. **Set the “From” address**
+   - In the **Send Email** node, set **From Email** to an address your SMTP account is allowed to send from (e.g. `noreply@yourdomain.com` or your Gmail). Many providers reject if it doesn’t match.
+
+4. **Ensure the workflow runs when payment is confirmed**
+   - **SePay IPN** runs when:
+     - SePay calls your IPN URL (`/api/payment/sepay/ipn` → n8n), or
+     - The user lands on the payment success page and the app calls n8n (if `DATABASE_URL` is not set).
+   - If you use **only** the Next.js confirm route with `DATABASE_URL` (no n8n call), the email is sent only when SePay’s IPN hits n8n. To always send email, keep the IPN URL in SePay pointing to your app so n8n is triggered.
+
+5. **User must have an email**
+   - The recipient is taken from the `users` table (same user who placed the order). Google sign-in / check-in fills this; if `email` is empty, the workflow skips sending.
+
+## Revenue Analytics
+
+The **Revenue Analytics** page (`/analytics`) shows revenue over time (line chart). It uses the **revenue-analytics** workflow:
+
+```
+GET {NEXT_PUBLIC_N8N_WEBHOOK_URL}/revenue-analytics?group_by=day|week|year&from_date=YYYY-MM-DD&to_date=YYYY-MM-DD
+```
+
+- **group_by**: `day`, `week`, or `year` (default `day`).
+- **from_date**, **to_date**: optional; filter by paid date.
+
+Response: `{ success: true, group_by: "day", data: [ { period: "2026-02-21", revenue: 10060, order_count: 1 }, ... ] }`.
+
+1. **Import** `revenue-analytics.json` in n8n.
+2. Set **PostgreSQL Railway** credentials on the **Revenue by Period** node.
+3. **Activate** the workflow.
+4. Open the frontend at `/analytics` (or click **Analytics** in the app header). Install dependencies with `npm install` (adds `recharts` for the line chart).

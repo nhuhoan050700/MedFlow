@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useGoogleLogin } from '@react-oauth/google'
 import type { Procedure } from '@/components/ProcedureSelection'
 import CheckIn from '@/components/CheckIn'
@@ -104,7 +104,7 @@ async function completeCheckIn(
 const STEP_TITLES: Record<string, string> = {
   checkin: 'Check in',
   order: 'Order',
-  visit: 'Pay',
+  visit: 'Payment',
   process: 'Process',
   payment: 'Payment',
 }
@@ -117,7 +117,13 @@ export default function Home() {
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [checkoutProcedures, setCheckoutProcedures] = useState<Procedure[]>([])
   const [step, setStep] = useState<'checkin' | 'order' | 'visit' | 'process' | 'payment'>('checkin')
+  const [lastAddedProcedure, setLastAddedProcedure] = useState<Procedure | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+
+  // Count procedures that are pending or in progress (done procedures are subtracted)
+  const processTabCount = useMemo(() => {
+    return orders.filter((o) => (o.status ?? '') !== 'completed').length
+  }, [orders])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -183,48 +189,104 @@ export default function Home() {
     }
   }, [doCheckIn])
 
-  // Fetch user's paid orders from DB when on Process tab
-  useEffect(() => {
-    if (typeof window === 'undefined' || step !== 'process' || !user?.id) return
-    let cancelled = false
+  const fetchProcessOrders = useCallback(() => {
+    if (typeof window === 'undefined' || !user?.id) return
     setOrdersLoading(true)
-    fetch(`/api/my-orders?user_id=${user.id}`)
+    fetch(`/api/my-orders?user_id=${user.id}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (cancelled) return
         if (data.success && Array.isArray(data.orders)) {
-          const mapped: Order[] = data.orders.map((o: Record<string, unknown>) => ({
-            id: Number(o.id),
-            order_number: String(o.order_number ?? ''),
-            room_number: String(o.room_number ?? ''),
-            status: String(o.status ?? 'pending'),
-            total_amount: Number(o.total_amount ?? 0),
-            procedure_name: o.procedure_name != null ? String(o.procedure_name) : undefined,
-            user_name: o.user_name != null ? String(o.user_name) : undefined,
-            payment_status: o.payment_status != null ? String(o.payment_status) : undefined,
-            payment_intent_id: o.payment_intent_id != null ? String(o.payment_intent_id) : undefined,
-            created_at: o.created_at != null ? String(o.created_at) : undefined,
-            paid_at: o.paid_at != null ? String(o.paid_at) : undefined,
-          }))
+          const raw = data.orders as Record<string, unknown>[]
+          const mapped: Order[] = []
+
+          for (const o of raw) {
+            const base = {
+              order_number: String(o.order_number ?? ''),
+              status: String((o as Record<string, unknown>).status ?? (o as Record<string, unknown>).item_status ?? 'pending'),
+              total_amount: Number(o.total_amount ?? o.amount ?? 0),
+              user_name: o.user_name != null ? String(o.user_name) : undefined,
+              payment_status: o.payment_status != null ? String(o.payment_status) : undefined,
+              payment_intent_id: o.payment_intent_id != null ? String(o.payment_intent_id) : undefined,
+              created_at: o.created_at != null ? String(o.created_at) : undefined,
+              paid_at: o.paid_at != null ? String(o.paid_at) : undefined,
+            }
+            const procedureName = o.procedure_name ?? o.procedureName
+            const roomNumber = o.room_number ?? o.roomNumber
+            const hasFlatRow = procedureName != null || roomNumber != null
+
+            if (hasFlatRow) {
+              mapped.push({
+                id: Number(o.item_id ?? o.id) * 1000 + mapped.length,
+                ...base,
+                procedure_name: procedureName != null ? String(procedureName) : undefined,
+                room_number: roomNumber != null ? String(roomNumber) : '',
+              })
+              continue
+            }
+            let itemsRaw = o.items
+            if (typeof itemsRaw === 'string') {
+              try {
+                itemsRaw = JSON.parse(itemsRaw as string) as unknown
+              } catch {
+                itemsRaw = []
+              }
+            }
+            const items = Array.isArray(itemsRaw) ? itemsRaw : []
+            if (items.length > 0) {
+              items.forEach((it: Record<string, unknown>, i: number) => {
+                const name = it.procedure_name ?? it.procedureName
+                const room = it.room_number ?? it.roomNumber
+                mapped.push({
+                  id: Number(o.id) * 1000 + i,
+                  ...base,
+                  procedure_name: name != null ? String(name) : undefined,
+                  room_number: room != null ? String(room) : '',
+                })
+              })
+            } else {
+              mapped.push({
+                id: Number(o.id),
+                ...base,
+                procedure_name: undefined,
+                room_number: '',
+              })
+            }
+          }
           setOrders(mapped)
           try {
             localStorage.setItem('checkin_orders', JSON.stringify(mapped))
           } catch (_) {}
         }
       })
-      .catch(() => {
-        if (!cancelled) setOrdersLoading(false)
-      })
-      .finally(() => {
-        if (!cancelled) setOrdersLoading(false)
-      })
-    return () => {
-      cancelled = true
+      .finally(() => setOrdersLoading(false))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (step !== 'process' || !user?.id) return
+    fetchProcessOrders()
+  }, [step, user?.id, fetchProcessOrders])
+
+  // Live updates when worker changes procedure status (SSE, no polling)
+  useEffect(() => {
+    if (step !== 'process' || !user?.id || typeof window === 'undefined') return
+    const url = `/api/order-events?user_id=${user.id}`
+    const es = new EventSource(url)
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as { item_id?: number; status?: string }
+        if (data?.item_id != null && data?.status != null) {
+          fetchProcessOrders()
+        }
+      } catch (_) {}
     }
-  }, [step, user?.id])
+    es.onerror = () => es.close()
+    return () => es.close()
+  }, [step, user?.id, fetchProcessOrders])
 
   const handleAddToCart = (procedure: Procedure) => {
-    setCart((prev) => (prev.some((p) => p.id === procedure.id) ? prev : [...prev, procedure]))
+    if (cart.some((p) => p.id === procedure.id)) return
+    setCart([...cart, procedure])
+    setLastAddedProcedure(procedure)
   }
 
   const handleRemoveFromCart = (procedure: Procedure) => {
@@ -238,26 +300,28 @@ export default function Home() {
     }
     if (!user?.id || procedures.length === 0) return
 
-    const createdOrders: Order[] = []
-    for (const proc of procedures) {
-      const response = await fetch(`${n8nUrl}/select-procedure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, procedure_id: proc.id, room_number: proc.room })
-      })
-      const text = await response.text()
-      const data = text ? (() => { try { return JSON.parse(text); } catch { return {}; } })() : {}
-      if (data.success && data.order) {
-        createdOrders.push(data.order)
-      } else {
-        alert(`Failed to create order for ${proc.name}. Check Procedure Selection workflow.`)
-        return
-      }
+    const res = await fetch('/api/cart-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: user.id,
+        procedures: procedures.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          room: p.room,
+        })),
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (data.success && data.order) {
+      setOrders([data.order])
+      setCheckoutProcedures(procedures)
+      setCart([])
+      setStep('payment')
+    } else {
+      alert(data?.error || `Failed to create order. Check cart-checkout workflow.`)
     }
-    setOrders(createdOrders)
-    setCheckoutProcedures(procedures)
-    setCart([])
-    setStep('payment')
   }
 
   const handleGoToOrder = () => setStep('order')
@@ -280,10 +344,24 @@ export default function Home() {
     } catch (_) {}
   }, [])
 
+  const highlightedProcedure = lastAddedProcedure ?? (cart.length > 0 ? cart[cart.length - 1] : null)
+
   return (
     <div className="h-dvh max-h-dvh bg-gray-50 flex flex-col max-w-app mx-auto overflow-hidden">
       {/* App header */}
       <header className="flex-shrink-0 z-30 bg-white border-b border-gray-200 px-4 py-3 pt-safe flex items-center justify-center relative">
+        {step === 'visit' && (
+          <button
+            type="button"
+            onClick={() => setStep('order')}
+            aria-label="Return to order"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+        )}
         <h1 className="text-lg font-semibold text-gray-900">
           {STEP_TITLES[step]}
         </h1>
@@ -357,10 +435,12 @@ export default function Home() {
 
           {step === 'process' && (
             <>
-              {user && (
-                <p className="text-[13px] text-[var(--app-text-secondary)] font-medium px-0.5 mb-4">Your visit</p>
-              )}
-              {ordersLoading ? (
+              {!user?.id ? (
+                <div className="py-16 text-center rounded-2xl bg-white/80 shadow-sm border border-gray-100">
+                  <p className="text-[var(--app-text-secondary)] text-sm font-medium">Sign in to see your orders</p>
+                  <p className="text-gray-400 text-[13px] mt-1">Check in first, then your Process tab will load.</p>
+                </div>
+              ) : ordersLoading ? (
                 <div className="py-16 text-center rounded-2xl bg-white/80 shadow-sm border border-gray-100">
                   <p className="text-[var(--app-text-secondary)] text-sm font-medium">Loading your orders…</p>
                 </div>
@@ -391,9 +471,35 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Bottom nav: Order | Pay (cart) | Process */}
+      {highlightedProcedure && cart.length > 0 && step === 'order' && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-20 flex justify-center z-40">
+          <div className="pointer-events-auto max-w-[420px] w-[92%] rounded-2xl bg-white/95 border border-gray-200 shadow-xl px-4 py-3 flex items-center gap-3 backdrop-blur">
+            <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg" aria-hidden>
+              ✓
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">Added to your visit</p>
+              <p className="text-xs text-gray-500 truncate">
+                {highlightedProcedure.name} · {cart.length}{' '}
+                {cart.length === 1 ? 'procedure selected' : 'procedures selected'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStep('visit')
+              }}
+              className="ml-2 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--app-primary)] text-white hover:bg-[var(--app-primary-hover)] active:scale-95 transition"
+            >
+              View visit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom nav: Order | Process */}
       {showBottomNav && (
-        <nav className="flex-shrink-0 z-40 w-full max-w-app mx-auto bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)] grid grid-cols-3">
+        <nav className="flex-shrink-0 z-40 w-full max-w-app mx-auto bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)] grid grid-cols-2">
           <button
             type="button"
             onClick={() => setStep('order')}
@@ -404,29 +510,14 @@ export default function Home() {
           </button>
           <button
             type="button"
-            onClick={() => setStep('visit')}
-            className={`flex flex-col items-center justify-center py-3 gap-1 relative min-w-0 ${step === 'visit' ? 'text-blue-600' : 'text-gray-500'}`}
-          >
-            <span className="text-xl relative inline-block shrink-0" aria-hidden>
-              💳
-              {cart.length > 0 && (
-                <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center px-1">
-                  {cart.length}
-                </span>
-              )}
-            </span>
-            <span className="text-xs font-medium truncate w-full text-center">Pay</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setStep('process')}
             className={`flex flex-col items-center justify-center py-3 gap-1 relative min-w-0 ${step === 'process' ? 'text-blue-600' : 'text-gray-500'}`}
           >
             <span className="text-xl relative inline-block shrink-0" aria-hidden>
               📋
-              {orders.length > 0 && (
+              {processTabCount > 0 && (
                 <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] rounded-full bg-green-600 text-white text-[10px] font-bold flex items-center justify-center px-1">
-                  {orders.length}
+                  {processTabCount}
                 </span>
               )}
             </span>

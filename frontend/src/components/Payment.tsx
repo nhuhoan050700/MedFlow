@@ -67,7 +67,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
       })
       const data = await response.json().catch(() => ({}))
       if (data.success) onSuccess()
-      else setError(data.error || 'Payment failed')
+      else setError(data.error || 'Bank payment could not be recorded')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -133,7 +133,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
       })
       const data = await response.json().catch(() => ({}))
       if (data.success) onSuccess()
-      else setError(data.error || 'Bank payment could not be recorded')
+      else setError(data.error || 'Payment failed')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -173,7 +173,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
           onClick={() => { setMethod('sepay'); setError(null) }}
           className={`flex-1 py-3 text-sm font-medium ${method === 'sepay' ? 'bg-white border border-gray-200 shadow-sm' : 'text-gray-600'}`}
         >
-          SePay (VietQR)
+          QR code
         </button>
         <button
           type="button"
@@ -226,7 +226,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
         <form onSubmit={handleSepaySubmit} className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-sm text-gray-700">
-              Pay via VietQR bank transfer. You will be redirected to SePay to scan the QR code with your banking app.
+              Pay via QR code bank transfer. You will be redirected to a QR payment page to scan with your banking app.
             </p>
           </div>
           {error && (
@@ -248,7 +248,7 @@ function PaymentForm({ orders, procedures, onSuccess, onCancel, stripeAvailable 
               disabled={processing}
               className={`h-12 rounded-xl bg-emerald-600 text-white font-semibold touch-target disabled:opacity-50 active:bg-emerald-700 ${onCancel ? 'flex-1' : 'w-full'}`}
             >
-              {processing ? 'Redirecting…' : `Pay with VietQR`}
+              {processing ? 'Redirecting…' : 'Pay'}
             </button>
           </div>
           <p className="text-center text-gray-400 text-xs">Powered by SePay</p>

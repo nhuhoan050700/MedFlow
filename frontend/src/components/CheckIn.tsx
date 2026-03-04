@@ -36,7 +36,7 @@ export default function CheckIn({ onLogin, onLoginRedirect, hasClientId = true, 
           🏥
         </div>
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Hospital Testing Service
+          MedFlow
         </h2>
         <p className="text-gray-500 text-sm max-w-[280px] mx-auto">
           Sign in to select procedures and complete your visit.

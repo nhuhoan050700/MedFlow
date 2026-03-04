@@ -35,6 +35,8 @@ psql "$DATABASE_URL" -f database/migrations/003_generate_queue_number_arr.sql
 psql "$DATABASE_URL" -f database/migrations/001_add_birthday_replace_age.sql
 psql "$DATABASE_URL" -f database/migrations/002_add_address.sql
 psql "$DATABASE_URL" -f database/migrations/003_generate_queue_number_arr.sql
+# ... 004–009 as needed ...
+psql "$DATABASE_URL" -f database/migrations/010_vietnam_timezone.sql   # use Vietnam time for all tables
 ```
 
 **From project root (Windows PowerShell):**
@@ -73,9 +75,18 @@ Then run any migrations that add columns/functions added after the schema (e.g. 
 
 ## Timezone (Vietnam)
 
-All timestamps are in **Vietnam time** (Asia/Ho_Chi_Minh, UTC+7). Run migration `010_vietnam_timezone.sql` to set the database default. This affects:
+**All data in all tables on Railway should use Vietnam time** (Asia/Ho_Chi_Minh, UTC+7). To ensure that:
 
-- `CURRENT_TIMESTAMP`, `now()`, `paid_at`, `created_at`, etc.
-- Railway SQL Query tab, n8n Postgres node, and Node.js scripts
+1. **Run migration 010** on your Railway database (once):
+   ```bash
+   railway run node run-migration.js migrations/010_vietnam_timezone.sql
+   ```
+   Or with psql: `psql "$DATABASE_URL" -f database/migrations/010_vietnam_timezone.sql`
 
-If the migration hasn't been applied, the Node.js scripts (`run-migration.js`, `fix-unpaid-order.js`) set the timezone on connect as a fallback.
+2. This sets the **database default timezone**, so every connection (Railway SQL tab, n8n Postgres nodes, Node scripts) uses Vietnam time unless they override it. That means:
+   - `CURRENT_TIMESTAMP`, `now()`, and all `created_at` / `updated_at` / `paid_at` defaults are in Vietnam time
+   - Data you see in Railway and n8n is in Vietnam time
+
+3. **New database from schema.sql**: The full schema already runs the same timezone setting at the end, so a fresh DB is already Vietnam time.
+
+4. **Fallback**: Node.js scripts (`run-migration.js`, `fix-unpaid-order.js`, `fix-order-details.js`) also set `SET timezone = 'Asia/Ho_Chi_Minh'` on connect when running locally.

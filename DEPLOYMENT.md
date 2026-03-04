@@ -1,6 +1,6 @@
 # Host This Project Globally
 
-This guide walks you through deploying the Hospital Testing Service Center so it’s reachable worldwide (HTTPS, custom domain optional).
+This guide walks you through deploying MedFlow so it’s reachable worldwide (HTTPS, custom domain optional).
 
 ## What You’re Hosting
 

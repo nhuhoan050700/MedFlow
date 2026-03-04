@@ -18,7 +18,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM procedures WHERE is_active = true ORDER BY name",
+        "query": "SELECT * FROM procedures ORDER BY name",
         "additionalFields": {}
       },
       "id": "get-procedures",
@@ -36,7 +36,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { \"success\": true, \"procedures\": $input.all().map(p => ({ id: p.json.id, name: p.json.name, description: p.json.description || '', price: Number(p.json.price), duration: p.json.duration_minutes, room: p.json.room_number })) } }}",
+        "responseBody": "={{ { \"success\": true, \"procedures\": $input.all().map(p => ({ id: p.json.id, name: p.json.name, description: p.json.description || '', price: Number(p.json.price), duration: 0, room: p.json.room_number })) } }}",
         "options": {}
       },
       "id": "respond-list",
@@ -99,7 +99,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $('Select Procedure').first().json;\nconst webhook = raw.body || raw;\nconst procedure = $('Get Procedure Details').first().json;\nconst gen = $('Generate Order & Queue Numbers').first().json;\nconst user_id = Number(webhook.user_id) || null;\nif (user_id == null || user_id < 1) throw new Error('user_id is required so we know who purchased this order');\nconst total_amount = procedure?.price != null ? Number(procedure.price) : null;\nconst order_number = gen?.order_number ?? '';\nconst room_number = procedure?.room_number ?? '';\nconst procedure_name = procedure?.name ?? '';\nreturn [{ json: { order_number, user_id, procedure_name, total_amount, room_number } }];"
+        "jsCode": "const raw = $('Select Procedure').first().json;\nconst webhook = raw.body || raw;\nconst procedure = $('Get Procedure Details').first().json;\nconst gen = $('Generate Order & Queue Numbers').first().json;\nconst user_id = Number(webhook.user_id) || null;\nif (user_id == null || user_id < 1) throw new Error('user_id is required so we know who purchased this order');\nconst total_amount = procedure?.price != null ? Number(procedure.price) : null;\nconst order_number = gen?.order_number ?? '';\nconst room_number = procedure?.room_number ?? '';\nconst procedure_name = procedure?.name ?? '';\nconst procedure_id = procedure?.id != null ? Number(procedure.id) : null;\nreturn [{ json: { order_number, user_id, procedure_id, procedure_name, total_amount, room_number } }];"
       },
       "id": "prepare-order",
       "name": "Prepare Order Row",
@@ -110,9 +110,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO orders (order_number, user_id, procedure_name, status, total_amount, room_number) VALUES ($1, $2, $3, 'pending', $4, $5) RETURNING *",
+        "query": "INSERT INTO orders (order_number, user_id, status, total_amount) VALUES ($1, $2, 'pending', $3) RETURNING *",
         "additionalFields": {
-          "queryParameters": "={{ [$json.order_number, $json.user_id, $json.procedure_name, $json.total_amount, $json.room_number] }}"
+          "queryParameters": "={{ [$json.order_number, $json.user_id, $json.total_amount] }}"
         }
       },
       "id": "create-order",
@@ -129,8 +129,28 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO order_items (order_id, procedure_id, procedure_name, room_number, amount) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        "additionalFields": {
+          "queryParameters": "={{ [$('Create Order').first().json.id, $('Prepare Order Row').first().json.procedure_id, $('Prepare Order Row').first().json.procedure_name, $('Prepare Order Row').first().json.room_number, $('Prepare Order Row').first().json.total_amount] }}"
+        }
+      },
+      "id": "create-order-item",
+      "name": "Create Order Item",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1050, 500],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Railway"
+        }
+      }
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { \"success\": true, \"order\": $json } }}",
+        "responseBody": "={{ { \"success\": true, \"order\": { ...($('Create Order').first().json), procedure_name: $('Create Order Item').first().json.procedure_name, procedure_id: $('Create Order Item').first().json.procedure_id, room_number: $('Create Order Item').first().json.room_number } } }}",
         "options": {}
       },
       "id": "respond-order",
@@ -172,6 +192,11 @@
       ]]
     },
     "Create Order": {
+      "main": [[
+        { "node": "Create Order Item", "type": "main", "index": 0 }
+      ]]
+    },
+    "Create Order Item": {
       "main": [[
         { "node": "Respond Order", "type": "main", "index": 0 }
       ]]

@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "migrate": "node run-migration.js",
+    "migrate:014": "node run-migration.js migrations/014_unpaid_paid_orders.sql",
     "fix-unpaid": "node fix-unpaid-order.js"
   },
   "dependencies": {

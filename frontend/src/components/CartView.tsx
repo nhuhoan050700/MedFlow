@@ -40,7 +40,7 @@ export default function CartView({
   }
 
   return (
-    <div className="max-w-app mx-auto space-y-5">
+    <div className="max-w-app mx-auto space-y-4">
       <p className="text-[13px] text-[var(--app-text-secondary)] font-medium px-0.5">
         {cart.length} {cart.length === 1 ? 'procedure' : 'procedures'} in your visit
       </p>
@@ -49,18 +49,24 @@ export default function CartView({
           {cart.map((proc) => (
             <li
               key={proc.id}
-              className="flex justify-between items-center py-4 px-4 hover:bg-gray-50/50 transition-colors"
+              className="flex items-center justify-between gap-4 py-4 px-4 hover:bg-gray-50/50 transition-colors"
             >
-              <div className="min-w-0 flex-1 pr-3">
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold text-gray-900 text-[15px] truncate">{proc.name}</p>
-                <p className="text-[var(--app-text-secondary)] text-[12px] mt-0.5">{proc.room} · {proc.duration} min</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  {proc.room?.trim() ? (
+                    <span className="inline-flex items-center rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                      {proc.room}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="font-bold text-[var(--app-primary)] text-sm tabular-nums">{formatVnd(Number(proc.price))}</span>
+                <span className="font-bold text-[var(--app-primary)] text-base tabular-nums">{formatVnd(Number(proc.price))}</span>
                 <button
                   type="button"
                   onClick={() => onRemoveFromCart(proc)}
-                  className="text-red-500 text-[13px] font-medium hover:text-red-600 touch-target min-w-[44px] min-h-[44px] transition-colors"
+                  className="text-red-500 text-[13px] font-medium hover:text-red-600 touch-target min-w-[44px] min-h-[44px] transition-colors rounded-lg hover:bg-red-50"
                 >
                   Remove
                 </button>
@@ -68,7 +74,7 @@ export default function CartView({
             </li>
           ))}
         </ul>
-        <div className="p-4 bg-gray-50/80 border-t border-gray-100">
+        <div className="p-5 bg-gray-50/80 border-t border-gray-100">
           <div className="flex justify-between items-center mb-4">
             <span className="font-semibold text-gray-900">Total</span>
             <span className="text-xl font-bold text-[var(--app-primary)] tabular-nums">{formatVnd(total)}</span>

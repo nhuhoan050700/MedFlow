@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "fromEmail": "noreply@hospital.com",
+        "fromEmail": "noreply@medflow.com",
         "toEmail": "={{ $json.body.email }}",
         "subject": "Xác nhận thanh toán – Order {{ $json.body.orderNumber }}",
         "emailType": "html",

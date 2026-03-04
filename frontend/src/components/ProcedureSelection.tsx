@@ -136,32 +136,36 @@ export default function ProcedureSelection({
             return (
               <div
                 key={proc.id}
-                className="group flex flex-col bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200/80 transition-all duration-200"
+                className="group flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow transition-shadow duration-200"
               >
-                <h3 className="font-semibold text-gray-900 text-[14px] leading-tight line-clamp-2">{proc.name}</h3>
-                <p className="text-[var(--app-text-secondary)] text-[12px] mt-1 line-clamp-2 leading-snug flex-1 min-h-0">{proc.description}</p>
-                <span className="text-sm font-bold text-[var(--app-primary)] tabular-nums mt-2">{formatVnd(Number(proc.price))}</span>
-                <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[11px] font-medium">
-                    {proc.duration} min
-                  </span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[11px] font-medium truncate max-w-[80px]">
-                    {proc.room}
-                  </span>
+                <div className="flex flex-col flex-1 p-4">
+                  <h3 className="font-semibold text-gray-900 text-[14px] leading-snug line-clamp-2 min-h-[2.5rem]">
+                    {proc.name}
+                  </h3>
+                  <div className="mt-3 flex items-baseline justify-between gap-2">
+                    <span className="text-base font-bold text-[var(--app-primary)] tabular-nums leading-none">
+                      {formatVnd(Number(proc.price))}
+                    </span>
+                    {proc.room?.trim() ? (
+                      <span className="shrink-0 inline-flex items-center rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-600">
+                        {proc.room}
+                      </span>
+                    ) : null}
+                  </div>
+                  {(onAddToCart || (inCart && onRemoveFromCart)) && (
+                    <button
+                      type="button"
+                      onClick={() => inCart && onRemoveFromCart ? onRemoveFromCart(proc) : onAddToCart?.(proc)}
+                      className={`mt-4 w-full h-11 rounded-xl font-semibold text-[13px] touch-target active:scale-[0.98] transition-all duration-150 ${
+                        inCart
+                          ? 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                          : 'bg-[var(--app-primary)] text-white hover:bg-[var(--app-primary-hover)]'
+                      }`}
+                    >
+                      {inCart ? 'Remove' : 'Add to visit'}
+                    </button>
+                  )}
                 </div>
-                {(onAddToCart || (inCart && onRemoveFromCart)) && (
-                  <button
-                    type="button"
-                    onClick={() => inCart && onRemoveFromCart ? onRemoveFromCart(proc) : onAddToCart?.(proc)}
-                    className={`w-full h-10 rounded-xl font-semibold text-[13px] touch-target active:scale-[0.98] transition-all duration-150 mt-auto ${
-                      inCart
-                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        : 'bg-[var(--app-primary)] text-white hover:bg-[var(--app-primary-hover)]'
-                    }`}
-                  >
-                    {inCart ? 'Remove from visit' : 'Add'}
-                  </button>
-                )}
               </div>
             )
           })
@@ -214,15 +218,23 @@ export default function ProcedureSelection({
                 {cart.map((proc) => (
                   <li
                     key={proc.id}
-                    className="flex justify-between items-center py-3 px-4 rounded-xl bg-gray-50"
+                    className="flex items-center gap-3 py-3 px-4 rounded-xl bg-gray-50 border border-gray-100"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 text-sm truncate">{proc.name}</p>
-                      <p className="text-xs text-gray-500">{proc.room}</p>
+                      <p className="font-semibold text-gray-900 text-sm truncate">{proc.name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {proc.room?.trim() ? (
+                          <span className="text-[11px] font-medium text-gray-500 bg-gray-200/80 rounded px-1.5 py-0.5">
+                            {proc.room}
+                          </span>
+                        ) : null}
+                        <span className="font-semibold text-[var(--app-primary)] text-sm tabular-nums">
+                          {formatVnd(Number(proc.price))}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-semibold text-blue-600 text-sm">{formatVnd(Number(proc.price))}</span>
-                      {onRemoveFromCart && (
+                    {onRemoveFromCart ? (
+                      <div className="shrink-0">
                         <button
                           type="button"
                           onClick={() => onRemoveFromCart(proc)}
@@ -230,8 +242,8 @@ export default function ProcedureSelection({
                         >
                           Remove
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
